@@ -85,7 +85,7 @@ enum AppUpdateError: LocalizedError, Equatable {
 }
 
 struct GitHubReleaseUpdateService: AppUpdateChecking {
-    static let repository = "c5vcpq5gsr-alt/keyboard-manager-new"
+    static let repository = "r3d42-git/keyboard-manager-new"
 
     private let repository: String
     private let loadData: @Sendable (URL) async throws -> Data

@@ -61,7 +61,7 @@ Vor dem ersten externen Push muss Sichtbarkeit und Eigentümer feststehen. Der f
 
 ```bash
 gh auth status
-gh repo create c5vcpq5gsr-alt/keyboard-manager-new --public --source=. --remote=origin --push
+gh repo create r3d42-git/keyboard-manager-new --public --source=. --remote=origin --push
 ```
 
 Anschließend `main` gegen Force-Pushes und Löschen schützen und die in `.github/workflows/release.yml` referenzierten Secrets hinterlegen:

@@ -453,9 +453,9 @@ Mit Beauftragung am 26. Juli 2026 beginnt nach abgeschlossener fachlicher Restpa
 
 Die Erstveröffentlichung ist abgeschlossen:
 
-- Das öffentliche Repository liegt unter `https://github.com/c5vcpq5gsr-alt/keyboard-manager-new`; seine öffentliche Historie enthält einen anonymisierten Initial-Commit und keine lokalen Build-, Release-, Backup- oder Finder-Dateien.
+- Das öffentliche Repository liegt unter `https://github.com/r3d42-git/keyboard-manager-new`; seine öffentliche Historie enthält einen anonymisierten Initial-Commit und keine lokalen Build-, Release-, Backup- oder Finder-Dateien.
 - `main` schützt gegen Löschen und Force-Pushes, erzwingt lineare Historie und Gesprächsauflösung.
-- Das Tag `v1.0.0` veröffentlicht `Keyboard-Manager-1.0.0-universal.dmg` sowie die SHA-256-Datei unter `https://github.com/c5vcpq5gsr-alt/keyboard-manager-new/releases/tag/v1.0.0`.
+- Das Tag `v1.0.0` veröffentlicht `Keyboard-Manager-1.0.0-universal.dmg` sowie die SHA-256-Datei unter `https://github.com/r3d42-git/keyboard-manager-new/releases/tag/v1.0.0`.
 - Ein frischer GitHub-Download stimmt bytegenau mit der lokalen SHA-256 `6d4498f82d14a2bd331d5b433fe06d0a7f43f1d10599f2c9d126826987686e8e` überein und besteht erneut Signatur-, Staple-, Gatekeeper-, Container- und eingeschlossene-App-Prüfung als `source=Notarized Developer ID`.
 - GitHub CI ist für den Release-Stand grün. Der tagbasierte Release-Workflow überspringt die CI-Notarisierung erfolgreich, bis die dokumentierten Zertifikats- und App-Store-Connect-Secrets hinterlegt sind; die veröffentlichte Erstversion wurde lokal notariell gebaut und unabhängig remote verifiziert.
 
