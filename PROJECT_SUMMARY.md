@@ -1,6 +1,6 @@
 # Keyboard Manager V2 – Projektübersicht
 
-Stand: 26. Juli 2026 · Fachliche Restparität und vollständige UI-Abnahme abgeschlossen
+Stand: 28. August 2026 · Version 1.1.0 veröffentlicht und GitHub-Owner-Migration abgeschlossen
 
 ## Ziel
 
@@ -447,7 +447,7 @@ Mit Beauftragung am 26. Juli 2026 beginnt nach abgeschlossener fachlicher Restpa
 - CI führt ausschließlich die nicht-interaktiven Unit-/Integrations-/Performance-Tests aus. UI-Tests dürfen nie mit `CODE_SIGNING_ALLOWED=NO` gestartet werden: Der dann unsignierte `KeyboardManagerUITests-Runner.app` wird von macOS als beschädigt blockiert. Sie benötigen frisches DerivedData, lokale Signierung und eine entsperrte interaktive Sitzung.
 - Eine lokale Developer-ID-Identität ist vorhanden. Ein Universal-Releasearchiv wurde erfolgreich gebaut; `codesign --verify --deep --strict` bestätigt die App, die Bundle-ID `de.r3d42.KeyboardManagerV2`, Hardened Runtime und beide Architekturen `x86_64 arm64`.
 - Lizenz, Datenschutz- und Drittanbieterhinweise sowie GitHub-CI-/Releasevorlagen liegen im Repository bereit. Das lokale V1-Notarisierungsprofil wird nicht wiederverwendet; V2 verwendet das separate Profil `keyboardmanager-new-notary`.
-- Das Releaseartefakt `dist/release/Keyboard-Manager-1.0.0-universal.dmg` des CI-Fix-Commits wurde am 27. Juli 2026 mit Submission-ID `448cec81-4726-4839-a2f6-d54a2ff77115` von Apple akzeptiert und gestapelt. Die erneute Prüfung des exakten DMG und der darin enthaltenen Universal-App bestätigt `source=Notarized Developer ID`; SHA-256: `6d4498f82d14a2bd331d5b433fe06d0a7f43f1d10599f2c9d126826987686e8e`.
+- Das Releaseartefakt `Keyboard-Manager-1.0.0-universal.dmg` des CI-Fix-Commits wurde am 27. Juli 2026 mit Submission-ID `448cec81-4726-4839-a2f6-d54a2ff77115` von Apple akzeptiert und gestapelt. Die erneute Prüfung des exakten DMG und der darin enthaltenen Universal-App bestätigt `source=Notarized Developer ID`; SHA-256: `6d4498f82d14a2bd331d5b433fe06d0a7f43f1d10599f2c9d126826987686e8e`.
 
 ## Öffentliche Erstveröffentlichung
 
@@ -460,6 +460,28 @@ Die Erstveröffentlichung ist abgeschlossen:
 - GitHub CI ist für den Release-Stand grün. Der tagbasierte Release-Workflow überspringt die CI-Notarisierung erfolgreich, bis die dokumentierten Zertifikats- und App-Store-Connect-Secrets hinterlegt sind; die veröffentlichte Erstversion wurde lokal notariell gebaut und unabhängig remote verifiziert.
 
 Weitere Produktarbeit bleibt danach ausdrücklich möglich, insbesondere die protokollierte Bereinigung von Importwarnungen im Spotlight.
+
+## Tagesabschluss – Projektordner bereinigt
+
+Am 27. Juli 2026 wurden die vollständig regenerierbaren Xcode-DerivedData-Verzeichnisse, das lokale Xcode-Releasearchiv und Finder-Metadaten entfernt. Das verifizierte v1.0.0-DMG samt SHA-256-Datei liegt getrennt unter `/Volumes/Media/codex/Archive/Keyboard-Manager-V2/2026-07-27-v1.0.0-release/`; seine Prüfsumme wurde nach dem Verschieben erneut bestätigt. Der damalige Release-Arbeitsstand war damit frei von regenerierbaren Buildartefakten.
+
+## Updateprüfung und geprüfter Installer
+
+Seit dem 31. Juli 2026 prüft V2 beim Start das neueste stabile GitHub-Release des öffentlichen Repositories. Ein Versionsvergleich berücksichtigt ausschließlich `vX.Y.Z`-Tags; Prereleases, Entwürfe und nicht neuere Versionen werden nicht angeboten. Bei einer neuen Version erscheint ein nativer Hinweis, und die Einstellungen erlauben außerdem eine manuelle Prüfung.
+
+Der Updateablauf ersetzt die laufende App nicht selbst. Nach ausdrücklicher Bestätigung lädt er das universelle DMG zusammen mit seiner veröffentlichten SHA-256-Datei, prüft die Bytes lokal und öffnet nur den passenden Installer. Dadurch bleibt die übliche macOS-Installation per DMG erhalten, ohne einen unsicheren Selbsttausch der laufenden Anwendung. Geprüfte Downloads liegen unter `Downloads/Keyboard Manager Updates`. Jede GitHub-Veröffentlichung muss daher DMG und gleichnamige `.sha256`-Datei enthalten; `script/release.sh` und der CI-Workflow erzeugen bzw. veröffentlichen beide bereits gemeinsam.
+
+Die Update-Logik besitzt Unit-Tests für Versionsvergleich, Release-/Asset-Auswahl und Prüfsummenbehandlung. Am 31. Juli 2026 liefen die vier neuen Tests mit frischem DerivedData erfolgreich; anschließend wurde `dist/Keyboard Manager.app` über `./script/build_and_run.sh --build` erzeugt.
+
+Die Funktion wurde als öffentliches Release `v1.1.0` veröffentlicht. Das universelle DMG `Keyboard-Manager-1.1.0-universal.dmg` ist mit der projektspezifischen Developer-ID-Identität inklusive Hardened Runtime signiert, durch Apple akzeptiert (Submission `25c98b0b-ca1c-4707-bdcb-603e613343d8`) und gestapelt. Die veröffentlichte SHA-256 lautet `71d114778c7016249d376f85b900196fbea0a6826870221a79ccdb3c18c9d53a`. Ein frischer GitHub-Download war byteidentisch und bestand erneut `codesign`, `hdiutil`, `stapler` und Gatekeeper als `source=Notarized Developer ID`.
+
+## GitHub-Owner-Migration
+
+Am 21. August 2026 wurden Repository-Verweise und der Update-Endpunkt auf den öffentlichen Owner `r3d42-git` vereinheitlicht. Pull Request [#1](https://github.com/r3d42-git/keyboard-manager-new/pull/1) wurde nach erfolgreichem Unit-Test per Squash in `main` übernommen. Die Migration änderte weder Produktversion noch Releaseartefakte; der anschließende `main`-Workflow für Commit `55cea4231412ab6e9d4d0c11450b54f2baad5a1c` war erfolgreich.
+
+Der lokale Checkout wurde am 28. August 2026 auf diesen `main`-Stand zurückgeführt. Die fachliche Beschreibung wurde auf Version 1.1.0 und den geprüften Updateablauf aktualisiert. Der vollständige Unit-Testlauf führte 70 Tests ohne Fehler aus; die zwei absichtlich extern gehaltenen privaten V1-Fixture-Tests wurden erwartungsgemäß übersprungen. Da weder App-Code noch Oberfläche geändert wurden, waren neue UI-Tests nicht erforderlich. `./script/build_and_run.sh --build` erzeugte anschließend ein gültig ad-hoc-signiertes Bundle unter `dist/Keyboard Manager.app`.
+
+Das lokal regenerierte sechsseitige PDF liegt unter `output/pdf/Keyboard_Manager_V2_Fachliche_Beschreibung.pdf` und ist als Buildausgabe ignoriert. Seine SHA-256 lautet `8a67c342d040efd3b78db386b7372e21e356961c2040681f58e0eb0dc1a6aa46`; Quelle und Screenshots liegen unter `documentation/`.
 
 ## Build und Test
 

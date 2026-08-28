@@ -32,6 +32,7 @@ Die App prüft beim Start das neueste stabile GitHub-Release. Wenn eine neuere V
 ## Dokumentation
 
 - `PROJECT_SUMMARY.md`: V1-Inventur, Zielarchitektur und Datenmodell
+- `documentation/Keyboard_Manager_V2_Fachliche_Beschreibung.md`: bebilderte fachliche Produktbeschreibung
 - `FEATURE_PARITY.md`: vollständige Funktions- und Umsetzungs-Matrix
 - `MIGRATION.md`: nicht destruktive V1→V2-Migrationsstrategie
 - `RELEASE.md`: Release- und Notarisierungsprozess

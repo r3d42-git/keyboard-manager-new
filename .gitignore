@@ -2,6 +2,7 @@
 .build/
 DerivedData/
 dist/
+/output/
 .release/
 /keyboard-manager-backup.zip
 *.xcuserstate
