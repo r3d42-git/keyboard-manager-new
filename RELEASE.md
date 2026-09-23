@@ -80,3 +80,5 @@ Die CI verwendet bewusst einen App-Store-Connect-API-Key, nicht das lokale App-P
 Solange eines dieser Secrets fehlt, beendet der Workflow nach der Credential-Prüfung erfolgreich und überspringt die CI-Notarisierung. Ein lokal erzeugtes, vollständig geprüftes DMG kann weiterhin manuell veröffentlicht werden.
 
 Nach jeder Veröffentlichung muss das hochgeladene DMG frisch heruntergeladen, mit der lokalen SHA-256 verglichen und erneut mit `script/verify_release.sh ... --require-notarization` geprüft werden.
+
+Die Universal-Prüfung erfolgt mit `script/verify_universal.sh` über `lipo -archs`, vor der App-Notarisierung und am ausgelieferten Binary. Der lokale Xcode-27-`lipo -verify_arch` meldete trotz gültiger Universaldatei einen Eingabefehler; die Ersatzprüfung wurde mit Universal- und absichtlich ausgedünntem ARM-Binary positiv/negativ geprüft.

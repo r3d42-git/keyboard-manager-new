@@ -48,7 +48,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Contents/Info.plist")" == "de.r3d42.KeyboardManagerV2" ]]
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")"
 [[ "$(basename "$DMG_PATH")" == "Keyboard-Manager-$VERSION-universal.dmg" ]]
-lipo -verify_arch arm64 x86_64 "$APP_PATH/Contents/MacOS/Keyboard Manager"
+"$ROOT_DIR/script/verify_universal.sh" "$APP_PATH/Contents/MacOS/Keyboard Manager"
 for notice in LICENSE LICENSING.md LICENSE-MIT THIRD_PARTY_NOTICES.md; do
   cmp "$ROOT_DIR/$notice" "$APP_PATH/Contents/Resources/$notice"
 done

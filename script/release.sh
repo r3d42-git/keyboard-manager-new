@@ -66,6 +66,7 @@ xcodebuild archive \
 }
 
 codesign --verify --deep --strict --verbose=2 "$EXPORT_APP"
+"$ROOT_DIR/script/verify_universal.sh" "$EXPORT_APP/Contents/MacOS/$APP_NAME"
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$EXPORT_APP/Contents/Info.plist")"
 DMG_PATH="$DIST_DIR/Keyboard-Manager-$VERSION-universal.dmg"
