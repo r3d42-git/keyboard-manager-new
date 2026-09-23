@@ -1,6 +1,6 @@
 # Keyboard Manager V2 – Projektübersicht
 
-Stand: 23. September 2026 · Version 1.1.0 veröffentlicht; lokale Korrektur der Komponenten-Alttexte geprüft
+Stand: 23. September 2026 · Version 1.1.1 veröffentlicht und unabhängig verifiziert · GPL-3.0-or-later
 
 ## Ziel
 
@@ -508,10 +508,25 @@ Am 23. September 2026 wurde ein Fehler beim Aufheben von Komponentenbeziehungen 
 
 Fünf Regressionstests prüfen Entfernen im Board-Editor, Entfernen in beiden Komponenten-Editoren, Umhängen einschließlich beider Keycap-Bearbeitungsrichtungen, Komponentenlöschung und Erhalt reiner Importtexte. Der vollständige Unit-/Integrations-Testlauf führte 75 Tests ohne Fehler aus; zwei optionale private Import-Fixtures wurden übersprungen. Das lokale Bundle wurde mit `./script/build_and_run.sh --build` gebaut und gestartet. Am betroffenen bestehenden Eintrag wurden nach gezielter, gesicherter Datenbankbereinigung die übereinstimmenden Zustände in Übersicht, Spotlight und Editor direkt geprüft. Die Bereinigung änderte genau zwei Legacy-Felder; der übrige Snapshot blieb identisch und SQLite meldete `integrity_check = ok`. Private Sicherungen liegen ausschließlich im lokalen V2-Application-Support-Bereich.
 
-Die Korrektur ist lokal und noch nicht veröffentlicht. Die installierte Release-App unter `/Applications` bleibt unverändert; für diese Prüfung läuft das korrigierte Bundle aus `dist/Keyboard Manager.app`.
+Die Korrektur wurde anschließend als Version 1.1.1 veröffentlicht (Nachweise unten). Die installierte Release-App unter `/Applications` wurde in dieser Sitzung nicht ersetzt; die lokale UI-Prüfung erfolgte mit dem korrigierten Bundle aus `dist/Keyboard Manager.app`.
 
 ## Releasevorbereitung 1.1.1 – GPL und Komponentenbeziehungen
 
 Version 1.1.1 (Build 2) enthält die allgemeine Korrektur historischer Komponenten-Anzeigetexte. Zusätzlich wurde auf ausdrücklichen Wunsch der lokale Bestand auf solche Texte ohne gültige Zuordnung geprüft und gesichert bereinigt; dies ist keine automatische Datenmigration für andere Installationen.
 
 Ab diesem Release gilt GPL-3.0-or-later. Der vollständige GPL-Text, der ausdrückliche Lizenzhinweis, der historische MIT-Hinweis und die unveränderten Drittanbieterbedingungen werden im App-Bundle mitgeliefert. Frühere MIT-Releases behalten ihre Lizenz und bleiben unverändert. Der Releasepfad notarisiert/stapelt App und DMG separat und prüft die Lizenzdateien, Version, Bundle-ID und Universal-Architekturen im tatsächlich ausgelieferten Container.
+
+## Veröffentlichung 1.1.1 – abgeschlossen
+
+- Unveränderliches Tag: `v1.1.1`, Release-Commit `0806047ee9780bb9736ce03e7d08ebe01766db8f`. Der vorherige Produktcommit ist `9a06ea6`; danach wurden ausschließlich Releaseprüfskripte und das Runbook korrigiert. Das bereits gebaute und akzeptierte App-/DMG-Artefakt blieb unverändert.
+- Release: https://github.com/r3d42-git/keyboard-manager-new/releases/tag/v1.1.1
+- Öffentliches Universal-DMG: https://github.com/r3d42-git/keyboard-manager-new/releases/download/v1.1.1/Keyboard-Manager-1.1.1-universal.dmg
+- SHA-256: `82898c61990985022f1cafdfbbbf103ec6faed6244c244b160fff80a680ec017`; portable `.dmg.sha256` gemeinsam veröffentlicht. Lokales Artefakt, frischer GitHub-Download, Prüfsummendatei und GitHub-Asset-Digest stimmen überein.
+- Produkt: Version 1.1.1, Build 2, Bundle-ID `de.r3d42.KeyboardManagerV2`, macOS 14+, Universal `arm64` und `x86_64`, Hardened Runtime. Signatur: `Developer ID Application: Philipp John Hild (G6JH37W285)`.
+- Apple-App-Submission: `ee42a57c-0803-4ad0-8b3a-7e4d4d6841d2`, Accepted; App-Ticket vor DMG-Erzeugung gestapelt.
+- Apple-DMG-Submission: `110d2cc3-8d42-40ce-9119-48deae8990fb`, Accepted; DMG-Ticket gestapelt.
+- Lokale und erneut heruntergeladene Container bestehen Signatur-, Integritäts-, Staple- und Gatekeeper-Prüfungen einschließlich der exakt enthaltenen App (`source=Notarized Developer ID`). Die enthaltenen Lizenzdateien stimmen bytegenau mit dem Releasequellstand überein.
+- Vollständiger lokaler Testlauf: 75 Tests, zwei optionale private Importtests übersprungen, keine Fehler. Release-Commit-CI: https://github.com/r3d42-git/keyboard-manager-new/actions/runs/35888860420 (success).
+- Tag-Workflow: https://github.com/r3d42-git/keyboard-manager-new/actions/runs/35889017783; Credential-Prüfung erfolgreich, CI-Veröffentlichung mangels Secrets erwartungsgemäß übersprungen. Veröffentlichung erfolgte ausschließlich aus dem lokal notarisierten Artefakt.
+- Die neue Architekturprüfung wurde mit dem Universal-Binary positiv und mit einer absichtlich ausgedünnten ARM-Kopie negativ geprüft. Ein Start auf einem zweiten, sauberen Mac ist weiterhin nicht getestet.
+- Der vollständige korrespondierende Quellcode liegt im öffentlichen Tag. GPL-3.0-or-later gilt ab 1.1.1; frühere MIT-Releases wurden weder umgetaggt noch ersetzt.
