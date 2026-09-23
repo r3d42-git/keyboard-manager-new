@@ -40,7 +40,17 @@ APP_PATH="$MOUNT_DIR/Keyboard Manager.app"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 codesign -dv --verbose=4 "$APP_PATH" 2>&1
 if [[ "$REQUIRE_NOTARIZATION" == true ]]; then
+  xcrun stapler validate "$APP_PATH"
   spctl --assess --type execute --verbose=4 "$APP_PATH"
 fi
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Contents/Info.plist")" == "de.r3d42.KeyboardManagerV2" ]]
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")"
+[[ "$(basename "$DMG_PATH")" == "Keyboard-Manager-$VERSION-universal.dmg" ]]
+lipo -verify_arch arm64 x86_64 "$APP_PATH/Contents/MacOS/Keyboard Manager"
+for notice in LICENSE LICENSING.md LICENSE-MIT THIRD_PARTY_NOTICES.md; do
+  cmp "$ROOT_DIR/$notice" "$APP_PATH/Contents/Resources/$notice"
+done
+grep -q 'SPDX-License-Identifier: GPL-3.0-or-later' "$APP_PATH/Contents/Resources/LICENSING.md"
 echo "Verified: $DMG_PATH"

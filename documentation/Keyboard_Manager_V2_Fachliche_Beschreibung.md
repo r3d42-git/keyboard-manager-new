@@ -1,6 +1,6 @@
 # Keyboard Manager V2 – Fachliche Beschreibung
 
-Stand: 28. August 2026 · Produktversion: 1.1.0
+Stand: 23. September 2026 · Produktversion: 1.1.1
 
 ## 1. Zweck und Nutzen
 

@@ -1,6 +1,6 @@
 # Keyboard Manager V2 – Projektübersicht
 
-Stand: 28. August 2026 · Version 1.1.0 veröffentlicht und GitHub-Owner-Migration abgeschlossen
+Stand: 23. September 2026 · Version 1.1.0 veröffentlicht; lokale Korrektur der Komponenten-Alttexte geprüft
 
 ## Ziel
 
@@ -499,3 +499,19 @@ xcodebuild -project KeyboardManager.xcodeproj -scheme KeyboardManager -configura
 
 Der deterministische lokale App-Bundle liegt nach dem Script unter `dist/Keyboard Manager.app`.
 `--build` beendet keinen laufenden Prozess. Die Start-, Debug- und Prüfmodi beenden vor dem Neubau ausschließlich eine V2-Instanz, deren ausführbare Datei aus dem projektlokalen `dist`- oder DerivedData-Bundle stammt; eine gleichnamige Electron-V1 bleibt unangetastet.
+
+## Lokale Fehlerkorrektur – historische Komponenten-Anzeigetexte
+
+Am 23. September 2026 wurde ein Fehler beim Aufheben von Komponentenbeziehungen korrigiert: Spotlight, Übersicht und Berichte fielen bei fehlenden Beziehungen auf die unverändert erhaltenen V1-Anzeigetexte zurück. Dadurch konnten frühere Komponenten erneut als aktuelle Bestückung erscheinen.
+
+`InventoryEditingService` vergleicht nach Speichern und Löschen die Beziehungen vor und nach der Transformation. Bei geänderter Keycap-Zuordnung beziehungsweise Switch-Installation wird ausschließlich der zugehörige Legacy-Anzeigetext des betroffenen Boards entfernt. Dies deckt Board- und Komponenten-Editoren, Umhängen und Komponentenlöschung ab. Unverknüpfte Importtexte bleiben bei fachlich unabhängigen Änderungen erhalten. Das Speicherformat bleibt unverändert.
+
+Fünf Regressionstests prüfen Entfernen im Board-Editor, Entfernen in beiden Komponenten-Editoren, Umhängen einschließlich beider Keycap-Bearbeitungsrichtungen, Komponentenlöschung und Erhalt reiner Importtexte. Der vollständige Unit-/Integrations-Testlauf führte 75 Tests ohne Fehler aus; zwei optionale private Import-Fixtures wurden übersprungen. Das lokale Bundle wurde mit `./script/build_and_run.sh --build` gebaut und gestartet. Am betroffenen bestehenden Eintrag wurden nach gezielter, gesicherter Datenbankbereinigung die übereinstimmenden Zustände in Übersicht, Spotlight und Editor direkt geprüft. Die Bereinigung änderte genau zwei Legacy-Felder; der übrige Snapshot blieb identisch und SQLite meldete `integrity_check = ok`. Private Sicherungen liegen ausschließlich im lokalen V2-Application-Support-Bereich.
+
+Die Korrektur ist lokal und noch nicht veröffentlicht. Die installierte Release-App unter `/Applications` bleibt unverändert; für diese Prüfung läuft das korrigierte Bundle aus `dist/Keyboard Manager.app`.
+
+## Releasevorbereitung 1.1.1 – GPL und Komponentenbeziehungen
+
+Version 1.1.1 (Build 2) enthält die allgemeine Korrektur historischer Komponenten-Anzeigetexte. Zusätzlich wurde auf ausdrücklichen Wunsch der lokale Bestand auf solche Texte ohne gültige Zuordnung geprüft und gesichert bereinigt; dies ist keine automatische Datenmigration für andere Installationen.
+
+Ab diesem Release gilt GPL-3.0-or-later. Der vollständige GPL-Text, der ausdrückliche Lizenzhinweis, der historische MIT-Hinweis und die unveränderten Drittanbieterbedingungen werden im App-Bundle mitgeliefert. Frühere MIT-Releases behalten ihre Lizenz und bleiben unverändert. Der Releasepfad notarisiert/stapelt App und DMG separat und prüft die Lizenzdateien, Version, Bundle-ID und Universal-Architekturen im tatsächlich ausgelieferten Container.

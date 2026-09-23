@@ -72,6 +72,13 @@ DMG_PATH="$DIST_DIR/Keyboard-Manager-$VERSION-universal.dmg"
 SHA_PATH="$DMG_PATH.sha256"
 STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/keyboard-manager-release.XXXXXX")"
 
+# Staple the app before packaging so the delivered bundle carries its own ticket.
+APP_ZIP="$RELEASE_ROOT/Keyboard-Manager-$VERSION-notarization.zip"
+ditto -c -k --keepParent "$EXPORT_APP" "$APP_ZIP"
+xcrun notarytool submit "$APP_ZIP" "${NOTARY_ARGS[@]}" --wait
+xcrun stapler staple "$EXPORT_APP"
+xcrun stapler validate "$EXPORT_APP"
+
 ditto "$EXPORT_APP" "$STAGING_DIR/$APP_NAME.app"
 ln -s /Applications "$STAGING_DIR/Applications"
 rm -f "$DMG_PATH" "$SHA_PATH"
@@ -81,7 +88,7 @@ codesign --force --sign "$SIGNING_IDENTITY" --timestamp "$DMG_PATH"
 xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" --wait
 xcrun stapler staple "$DMG_PATH"
 "$ROOT_DIR/script/verify_release.sh" "$DMG_PATH" --require-notarization
-shasum -a 256 "$DMG_PATH" > "$SHA_PATH"
+(cd "$DIST_DIR" && shasum -a 256 "$(basename "$DMG_PATH")") > "$SHA_PATH"
 
 echo "$DMG_PATH"
 echo "$SHA_PATH"

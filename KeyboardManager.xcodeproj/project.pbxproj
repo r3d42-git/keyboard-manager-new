@@ -68,6 +68,10 @@
 		00000000000000000000003B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000039 /* Assets.xcassets */; };
 		00000000000000000000003C /* AppUpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000003A /* AppUpdateService.swift */; };
 		00000000000000000000003D /* AppUpdateServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000003B /* AppUpdateServiceTests.swift */; };
+		D10000000000000000000001 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000001 /* LICENSE */; };
+		D10000000000000000000002 /* LICENSING.md in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000002 /* LICENSING.md */; };
+		D10000000000000000000003 /* LICENSE-MIT in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000003 /* LICENSE-MIT */; };
+		D10000000000000000000004 /* THIRD_PARTY_NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* THIRD_PARTY_NOTICES.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -150,6 +154,10 @@
 		100000000000000000000101 /* Keyboard Manager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Keyboard Manager.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000102 /* KeyboardManagerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KeyboardManagerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000103 /* KeyboardManagerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KeyboardManagerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D20000000000000000000001 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = "LICENSE"; sourceTree = "<group>"; };
+		D20000000000000000000002 /* LICENSING.md */ = {isa = PBXFileReference; lastKnownFileType = text; path = "LICENSING.md"; sourceTree = "<group>"; };
+		D20000000000000000000003 /* LICENSE-MIT */ = {isa = PBXFileReference; lastKnownFileType = text; path = "LICENSE-MIT"; sourceTree = "<group>"; };
+		D20000000000000000000004 /* THIRD_PARTY_NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = text; path = "THIRD_PARTY_NOTICES.md"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -182,6 +190,10 @@
 		200000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
+				D20000000000000000000001 /* LICENSE */,
+				D20000000000000000000002 /* LICENSING.md */,
+				D20000000000000000000003 /* LICENSE-MIT */,
+				D20000000000000000000004 /* THIRD_PARTY_NOTICES.md */,
 				200000000000000000000002 /* KeyboardManager */,
 				20000000000000000000000B /* KeyboardManagerTests */,
 				20000000000000000000000F /* KeyboardManagerUITests */,
@@ -475,6 +487,10 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D10000000000000000000001 /* LICENSE in Resources */,
+				D10000000000000000000002 /* LICENSING.md in Resources */,
+				D10000000000000000000003 /* LICENSE-MIT in Resources */,
+				D10000000000000000000004 /* THIRD_PARTY_NOTICES.md in Resources */,
 				00000000000000000000003B /* Assets.xcassets in Resources */,
 				000000000000000000000039 /* Localizable.xcstrings in Resources */,
 			);
@@ -630,7 +646,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Keyboard Manager";
@@ -641,7 +657,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = de.r3d42.KeyboardManagerV2;
 				PRODUCT_MODULE_NAME = KeyboardManager;
 				PRODUCT_NAME = "Keyboard Manager";
@@ -657,7 +673,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Keyboard Manager";
@@ -668,7 +684,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = de.r3d42.KeyboardManagerV2;
 				PRODUCT_MODULE_NAME = KeyboardManager;
 				PRODUCT_NAME = "Keyboard Manager";

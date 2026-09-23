@@ -30,6 +30,86 @@ final class InventoryEditingServiceTests: XCTestCase {
         )
     }
 
+    private func legacyRelationshipFixture() -> InventorySnapshot {
+        var source = InventorySnapshot.empty
+        source.boards = [
+            Board(id: "board", name: "Board", legacyKeycapsName: "Old caps",
+                  keycapSetID: "caps", legacySwitchesName: "Old switches"),
+            Board(id: "other", name: "Other", legacyKeycapsName: "Import caps",
+                  legacySwitchesName: "Import switches")
+        ]
+        source.keycapSets = [KeycapSet(id: "caps", name: "Current caps", mountedBoardID: "board")]
+        source.switchSets = [SwitchSet(id: "switches", name: "Current switches", quantity: 100)]
+        source.switchInstallations = [SwitchInstallation(switchSetID: "switches", boardID: "board", quantity: 60)]
+        return source
+    }
+
+    func testBoardDetachDoesNotResurrectLegacyNames() throws {
+        let source = legacyRelationshipFixture()
+        var draft = InventoryDraft(board: source.boards[0], installations: source.switchInstallations)
+        draft.keycapSetID = nil
+        draft.installations = [:]
+        let saved = try service.saving(draft, newPhotos: [], in: source).snapshot
+        let summary = try XCTUnwrap(InventoryQuery.items(in: saved, kind: .board).first)
+        XCTAssertEqual(summary.keycapsSummary, "")
+        XCTAssertEqual(summary.switchesSummary, "")
+        XCTAssertNil(saved.keycapSets[0].mountedBoardID)
+        XCTAssertTrue(saved.switchInstallations.isEmpty)
+        XCTAssertEqual(saved.boards[1], source.boards[1])
+    }
+
+    func testComponentEditorsDetachWithoutResurrectingLegacyNames() throws {
+        var source = legacyRelationshipFixture()
+        var caps = InventoryDraft(keycapSet: source.keycapSets[0])
+        caps.mountedBoardID = nil
+        source = try service.saving(caps, newPhotos: [], in: source).snapshot
+        XCTAssertEqual(source.boards[0].legacyKeycapsName, "")
+        XCTAssertEqual(source.boards[0].legacySwitchesName, "Old switches")
+        var switches = InventoryDraft(switchSet: source.switchSets[0], installations: source.switchInstallations)
+        switches.installations = [:]
+        source = try service.saving(switches, newPhotos: [], in: source).snapshot
+        XCTAssertEqual(source.boards[0].legacySwitchesName, "")
+    }
+
+    func testMovingComponentsClearsLegacyNamesOnBothBoards() throws {
+        for editFromBoard in [true, false] {
+            var source = legacyRelationshipFixture()
+            if editFromBoard {
+                var draft = InventoryDraft(board: source.boards[1], installations: [])
+                draft.keycapSetID = "caps"
+                source = try service.saving(draft, newPhotos: [], in: source).snapshot
+            } else {
+                var draft = InventoryDraft(keycapSet: source.keycapSets[0])
+                draft.mountedBoardID = "other"
+                source = try service.saving(draft, newPhotos: [], in: source).snapshot
+            }
+            XCTAssertTrue(source.boards.allSatisfy { $0.legacyKeycapsName.isEmpty })
+            var switches = InventoryDraft(switchSet: source.switchSets[0], installations: source.switchInstallations)
+            switches.installations = ["other": 60]
+            source = try service.saving(switches, newPhotos: [], in: source).snapshot
+            XCTAssertTrue(source.boards.allSatisfy { $0.legacySwitchesName.isEmpty })
+        }
+    }
+
+    func testDeletingComponentsDoesNotResurrectLegacyNames() throws {
+        var source = legacyRelationshipFixture()
+        source = try service.deleting(kind: .keycapSet, id: "caps", in: source).snapshot
+        XCTAssertEqual(source.boards[0].legacyKeycapsName, "")
+        source = try service.deleting(kind: .switchSet, id: "switches", in: source).snapshot
+        XCTAssertEqual(source.boards[0].legacySwitchesName, "")
+        XCTAssertEqual(source.boards[1].legacyKeycapsName, "Import caps")
+        XCTAssertEqual(source.boards[1].legacySwitchesName, "Import switches")
+    }
+
+    func testUnrelatedBoardEditPreservesImportOnlyNames() throws {
+        let source = legacyRelationshipFixture()
+        var draft = InventoryDraft(board: source.boards[1], installations: [])
+        draft.notes = "New note"
+        let saved = try service.saving(draft, newPhotos: [], in: source).snapshot
+        XCTAssertEqual(saved.boards[1].legacyKeycapsName, "Import caps")
+        XCTAssertEqual(saved.boards[1].legacySwitchesName, "Import switches")
+    }
+
     func testSavingNewLibraryValueDeduplicatesCaseInsensitively() throws {
         var source = InventorySnapshot.empty
         source.libraryValues.valuesByKey["manufacturers"] = ["Mode"]

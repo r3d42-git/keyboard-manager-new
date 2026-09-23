@@ -65,6 +65,7 @@ struct InventoryEditingService: Sendable {
         case .switchSet:
             saveSwitchSet(draft, in: &snapshot, now: now)
         }
+        clearLegacyNamesForChangedRelationships(from: source, in: &snapshot, now: now)
         rememberLibraryValues(from: draft, in: &snapshot.libraryValues)
 
         return InventoryEditingResult(snapshot: snapshot, removedPhotos: removedPhotos)
@@ -122,9 +123,35 @@ struct InventoryEditingService: Sendable {
         }
 
         guard didRemove else { throw InventoryEditingError.missingItem }
+        clearLegacyNamesForChangedRelationships(from: source, in: &snapshot, now: now)
         snapshot.photos.removeAll { removedPhotos.map(\.id).contains($0.id) }
         snapshot.metadata.updatedAt = now
         return InventoryEditingResult(snapshot: snapshot, removedPhotos: removedPhotos)
+    }
+
+    // Import-only labels must not become visible again after an explicit relationship change.
+    // Compare complete snapshots so edits from either side, moves and deletion share this rule.
+    private func clearLegacyNamesForChangedRelationships(
+        from source: InventorySnapshot,
+        in snapshot: inout InventorySnapshot,
+        now: Date
+    ) {
+        let oldBoards = Dictionary(uniqueKeysWithValues: source.boards.map { ($0.id, $0) })
+        let oldInstallations = Dictionary(grouping: source.switchInstallations, by: \.boardID)
+        let newInstallations = Dictionary(grouping: snapshot.switchInstallations, by: \.boardID)
+        for index in snapshot.boards.indices {
+            let board = snapshot.boards[index]
+            if oldBoards[board.id]?.keycapSetID != board.keycapSetID {
+                snapshot.boards[index].legacyKeycapsName = ""
+                snapshot.boards[index].updatedAt = now
+            }
+            let oldSwitches = oldInstallations[board.id, default: []].sorted { $0.switchSetID < $1.switchSetID }
+            let newSwitches = newInstallations[board.id, default: []].sorted { $0.switchSetID < $1.switchSetID }
+            if oldSwitches != newSwitches {
+                snapshot.boards[index].legacySwitchesName = ""
+                snapshot.boards[index].updatedAt = now
+            }
+        }
     }
 
     private func validate(

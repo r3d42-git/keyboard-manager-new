@@ -39,4 +39,4 @@ Die App prüft beim Start das neueste stabile GitHub-Release. Wenn eine neuere V
 
 ## Lizenz
 
-Dieses Projekt ist unter der [MIT-Lizenz](LICENSE) verfügbar. Hinweise zu ZIPFoundation: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Ab Version 1.1.1 steht dieses Projekt unter [GNU GPL Version 3 oder später](LICENSE) (`GPL-3.0-or-later`). Frühere Releases behalten ihre MIT-Lizenz. Details und Hinweise zu zuvor MIT-lizenzierten Anteilen: [LICENSING.md](LICENSING.md). Hinweise zu ZIPFoundation: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Der vollständige Quellcode jedes Releases ist über das gleichnamige Git-Tag verfügbar.

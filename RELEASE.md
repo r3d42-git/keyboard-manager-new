@@ -49,7 +49,9 @@ NOTARY_PROFILE="keyboardmanager-new-notary" \
 ./script/release.sh
 ```
 
-Das Skript archiviert beide Architekturen, prüft die App-Signatur, erzeugt das DMG, signiert und notarisiert es, stapelt das Ticket, prüft DMG und enthaltene App und schreibt eine SHA-256-Datei nach `dist/release/`.
+Das Skript archiviert beide Architekturen, prüft die App-Signatur und notarisiert und stapelt zunächst das App-Bundle. Erst danach erzeugt es das DMG, signiert und notarisiert dieses separat und stapelt auch dessen Ticket. Die Prüfung des tatsächlich gemounteten DMG verlangt beide Tickets, Gatekeeper-Akzeptanz, Produktidentität, beide Architekturen und die vollständigen Lizenzdateien im App-Bundle. Die SHA-256-Datei unter `dist/release/` verwendet einen portablen Dateinamen.
+
+Ab 1.1.1 gilt `GPL-3.0-or-later`. `LICENSE`, `LICENSING.md`, `LICENSE-MIT` und `THIRD_PARTY_NOTICES.md` werden über die Xcode-Ressourcenphase vor der Signierung ins App-Bundle übernommen. Der passende öffentliche Release-Tag enthält den vollständigen korrespondierenden Quellcode. Frühere Release-Tags und Artefakte bleiben unverändert.
 
 ## Update-Vertrag
 
