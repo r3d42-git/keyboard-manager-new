@@ -1,12 +1,14 @@
 # Keyboard Manager V2 – Projektübersicht
 
-Stand: 23. September 2026 · Version 1.1.1 veröffentlicht und unabhängig verifiziert · GPL-3.0-or-later
+Stand: 2. Oktober 2026 · Version 1.1.2 veröffentlicht und unabhängig verifiziert · GPL-3.0-or-later
 
-## Vorbereitung 1.1.2 / Build 3 (noch nicht veröffentlicht)
+## Abgeschlossener G2-Release 1.1.2 — 2026-10-02
 
-- Beide Xcode-App-Konfigurationen tragen Version 1.1.2 und Build 3; App-Funktionen und GPL-3.0-or-later bleiben gegenüber 1.1.1 unverändert.
-- Der lokale Releasepfad verwendet die gültige G2-Developer-ID standardmäßig über SHA-1 `D548540E7FE1BD9B3C4518CC02D8786E1BFEB885`, respektiert `SIGNING_IDENTITY` und prüft die Identität vor dem Archivieren. Die getrennte App-/DMG-Notarisierung und die Universal-Prüfung bleiben Teil des Release-Gates.
-- `RELEASE_NOTES/1.1.2.md` ist als Text für eine manuelle Veröffentlichung vorbereitet. Das Repository besitzt keinen lokalen Publish-Wrapper; der tagbasierte GitHub-Workflow verwendet derzeit automatisch erzeugte Notes. Build, Notarisierung, Tag, GitHub-Release und Downloadprüfung stehen noch aus; 1.1.1 bleibt veröffentlicht.
+- [1.1.2](https://github.com/r3d42-git/keyboard-manager-new/releases/tag/v1.1.2) veröffentlicht, unveränderlicher annotierter Tag `v1.1.2` auf `cac78056991e584c138513258e0b0ad92b6f5b6c`. App-Funktionen bleiben unverändert.
+- Native Releaseprüfungen und exakte Quellcommit-CI [Run 36973574540](https://github.com/r3d42-git/keyboard-manager-new/actions/runs/36973574540) erfolgreich. Beide Apple-Submission-IDs `491f9ddd-0b26-4ec5-a42c-c84d4109b6d2 / f3551b9c-53e6-4fce-a3ea-762e035fffd4` sind Accepted; App und DMG tragen eigene gültige Staple-Tickets.
+- Frischer GitHub-Download besteht Container-/strikte Signaturprüfung, Architektur-/Bundle-Metadaten, bytegenaue Lizenzmaterialprüfung, Stapling und Gatekeeper. Zusätzliche Leaf-Prüfung bestätigt exakt G2 `D548540E7FE1BD9B3C4518CC02D8786E1BFEB885` für App und DMG.
+- `Keyboard-Manager-1.1.2-universal.dmg`; SHA-256 `b7f0672502ab1a099427a6f7d3eb785270950fadb1e2881bb9e38a363470cc3c` stimmt lokal, mit GitHub-Download/-Digest und Sidecar überein. Version/Build `1.1.2/3`, Bundle-ID `de.r3d42.KeyboardManagerV2`.
+- Abschlussbelege erfolgen in separatem Dokumentationscommit; der Release-Tag wird nicht bewegt. Keine neue manuelle UI-Abnahme abgeleitet.
 
 ## Ziel
 
