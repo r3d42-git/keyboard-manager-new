@@ -15,7 +15,8 @@ DIST_DIR="$ROOT_DIR/dist/release"
 STAGING_DIR=""
 
 DEVELOPMENT_TEAM="${DEVELOPMENT_TEAM:?Set DEVELOPMENT_TEAM to the Apple Developer Team ID.}"
-SIGNING_IDENTITY="${SIGNING_IDENTITY:?Set SIGNING_IDENTITY to a Developer ID Application identity.}"
+# Fingerprint selects G2 when Developer ID certificates share a name.
+SIGNING_IDENTITY="${SIGNING_IDENTITY:-D548540E7FE1BD9B3C4518CC02D8786E1BFEB885}"
 
 cleanup() {
   [[ -z "$STAGING_DIR" ]] || rm -rf "$STAGING_DIR"
@@ -42,6 +43,12 @@ else
   echo "Set NOTARY_PROFILE or NOTARY_API_KEY_PATH, NOTARY_KEY_ID and NOTARY_ISSUER_ID." >&2
   exit 2
 fi
+
+IDENTITIES="$(security find-identity -v -p codesigning)"
+[[ "$IDENTITIES" == *"$SIGNING_IDENTITY"* ]] || {
+  echo "Developer ID signing identity unavailable: $SIGNING_IDENTITY" >&2
+  exit 1
+}
 
 mkdir -p "$RELEASE_ROOT" "$DIST_DIR"
 rm -rf "$ARCHIVE_PATH"

@@ -2,6 +2,12 @@
 
 Stand: 23. September 2026 · Version 1.1.1 veröffentlicht und unabhängig verifiziert · GPL-3.0-or-later
 
+## Vorbereitung 1.1.2 / Build 3 (noch nicht veröffentlicht)
+
+- Beide Xcode-App-Konfigurationen tragen Version 1.1.2 und Build 3; App-Funktionen und GPL-3.0-or-later bleiben gegenüber 1.1.1 unverändert.
+- Der lokale Releasepfad verwendet die gültige G2-Developer-ID standardmäßig über SHA-1 `D548540E7FE1BD9B3C4518CC02D8786E1BFEB885`, respektiert `SIGNING_IDENTITY` und prüft die Identität vor dem Archivieren. Die getrennte App-/DMG-Notarisierung und die Universal-Prüfung bleiben Teil des Release-Gates.
+- `RELEASE_NOTES/1.1.2.md` ist als Text für eine manuelle Veröffentlichung vorbereitet. Das Repository besitzt keinen lokalen Publish-Wrapper; der tagbasierte GitHub-Workflow verwendet derzeit automatisch erzeugte Notes. Build, Notarisierung, Tag, GitHub-Release und Downloadprüfung stehen noch aus; 1.1.1 bleibt veröffentlicht.
+
 ## Ziel
 
 Keyboard Manager V2 ist die native macOS-Neuentwicklung des bestehenden Keyboard Managers. Die frühere Electron-App dient ausschließlich als unveränderliche Referenz und als Datenquelle für die Migration. V2 schreibt weder in deren Repository noch in deren Nutzerdaten.

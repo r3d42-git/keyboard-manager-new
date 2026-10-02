@@ -40,11 +40,12 @@ Apple beschreibt die Anforderungen für Developer ID und Notarisierung unter [De
 
 ## Lokales Release erzeugen
 
+Standard ist das G2-Developer-ID-Zertifikat mit SHA-1-Fingerabdruck `D548540E7FE1BD9B3C4518CC02D8786E1BFEB885`. `SIGNING_IDENTITY` erlaubt eine abweichende Auswahl; bei gleichnamigen Zertifikaten einen Fingerabdruck verwenden.
+
 Nach Abschluss der Produktabnahme und mit einer gesetzten Releaseversion:
 
 ```bash
 DEVELOPMENT_TEAM="G6JH37W285" \
-SIGNING_IDENTITY="Developer ID Application: YOUR_NAME (G6JH37W285)" \
 NOTARY_PROFILE="keyboardmanager-new-notary" \
 ./script/release.sh
 ```
