@@ -1,6 +1,14 @@
 # Keyboard Manager V2 – Projektübersicht
 
-> Historischer Projektstand bis Version 1.1.2. Die überarbeitete App verwaltet den bestehenden lokalen Bestand direkt. Die aktuelle Bedienung beschreibt die [Produktdokumentation](documentation/Keyboard_Manager_V2_Fachliche_Beschreibung.md).
+## Release 1.2.0 · 20. November 2026
+
+Version 1.2.0 (Build 4) führt die Keyboard-Galerie als Startansicht ein. Spaltensortierung, verknüpfte Komponentendetails und die Wiederherstellung nativer ZIP-Backups sind in der Bedienungsanleitung beschrieben. [Release](https://github.com/r3d42-git/keyboard-manager-new/releases/tag/v1.2.0) · [Bedienungsanleitung](documentation/Keyboard_Manager_V2_Fachliche_Beschreibung.md)
+
+- Der Tag `v1.2.0` verweist auf `41d2197ed37bf7265713d52dde893bb3ad40a035`. Lokal bestanden 86 Unit- und Integrationstests sowie 13 Bedienungstests. [CI zum Release-Commit](https://github.com/r3d42-git/keyboard-manager-new/actions/runs/44788646918) · [Tag-Workflow](https://github.com/r3d42-git/keyboard-manager-new/actions/runs/44789234390)
+- Das Universal-DMG enthält die App für Apple Silicon und Intel ab macOS 14 mit der Bundle-ID `de.r3d42.KeyboardManagerV2`. Die SHA-256 des öffentlichen Downloads stimmt mit dem lokalen Installer, der veröffentlichten Prüfsummendatei und dem GitHub-Digest überein. SHA-256 `2ac75766bb350694f23cd91e9166463e638a770e0ea787c74e4d2ff3774057a2`. [Keyboard-Manager-1.2.0-universal.dmg](https://github.com/r3d42-git/keyboard-manager-new/releases/download/v1.2.0/Keyboard-Manager-1.2.0-universal.dmg)
+- Apple akzeptierte App und DMG separat unter `1aff4b3a-973d-4b73-a9ea-ee0eb976c1e7` und `e30326ec-3da1-41d0-b974-82be34b0f89f`. Developer-ID-Signatur, beide angehefteten Tickets und Gatekeeper wurden am öffentlichen DMG und an der darin enthaltenen App geprüft. Ein Start auf einem zweiten Mac steht aus.
+
+## Projekthistorie bis 1.1.2
 
 Stand: 2. Oktober 2026 · Version 1.1.2 veröffentlicht und unabhängig verifiziert · GPL-3.0-or-later
 
