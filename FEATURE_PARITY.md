@@ -1,5 +1,7 @@
 # Keyboard Manager V2 – Feature-Parität
 
+> Historischer Projektstand bis Version 1.1.2. Die überarbeitete App verwaltet den bestehenden lokalen Bestand direkt. Die aktuelle Bedienung beschreibt die [Produktdokumentation](documentation/Keyboard_Manager_V2_Fachliche_Beschreibung.md).
+
 Stand: 26. Juli 2026 · Referenz: Electron V1.3.2 · fachliche Restparität abgeschlossen
 
 Statusdefinitionen:

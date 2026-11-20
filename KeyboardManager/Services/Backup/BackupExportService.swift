@@ -63,21 +63,21 @@ enum BackupExportError: LocalizedError, Sendable {
 actor BackupExportService {
     static let defaultFileName = "keyboard-manager-backup.zip"
 
-    private static let maximumItemsPerKind = 10_000
-    private static let maximumPhotos = 50_000
-    private static let maximumPhotoBytes = 30 * 1_024 * 1_024
-    private static let maximumPhotoTotalBytes = 500 * 1_024 * 1_024
-    private static let maximumManifestBytes = 10 * 1_024 * 1_024
-    private static let maximumArchiveBytes: Int64 = 500 * 1_024 * 1_024
+    static let maximumItemsPerKind = 10_000
+    static let maximumPhotos = 50_000
+    static let maximumPhotoBytes = 30 * 1_024 * 1_024
+    static let maximumPhotoTotalBytes = 500 * 1_024 * 1_024
+    static let maximumManifestBytes = 10 * 1_024 * 1_024
+    static let maximumArchiveBytes: Int64 = 500 * 1_024 * 1_024
     private static let identifierCharacters = CharacterSet(
         charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
     )
 
-    private let layout: MigrationStorageLayout
+    private let layout: InventoryStorageLayout
     private let fileManager: FileManager
 
     init(
-        layout: MigrationStorageLayout = .default,
+        layout: InventoryStorageLayout = .default,
         fileManager: FileManager = .default
     ) {
         self.layout = layout
@@ -96,8 +96,8 @@ actor BackupExportService {
               !destinationURL.lastPathComponent.isEmpty else {
             throw BackupExportError.invalidDestination
         }
-        try validateCounts(snapshot.counts)
-        try validateIdentifiers(in: snapshot)
+        try Self.validateCounts(snapshot.counts)
+        try Self.validateInventory(snapshot)
 
         let parentURL = destinationURL.deletingLastPathComponent()
         try fileManager.createDirectory(at: parentURL, withIntermediateDirectories: true)
@@ -108,22 +108,24 @@ actor BackupExportService {
 
         let archive = try Archive(url: partialURL, accessMode: .create)
         let stableDate = zipCompatibleDate(exportedAt)
-        let photos = try preparePhotos(snapshot.photos)
         var photoByteCount = 0
         var transcodedHEICPhotoCount = 0
         var exportPhotos: [V1ExportPhoto] = []
+        var expectedEntrySizes: [String: Int] = [:]
 
-        for prepared in photos {
-            photoByteCount += prepared.data.count
+        for record in snapshot.photos.sorted(by: { $0.id < $1.id }) {
+            let prepared = try preparePhoto(record)
+            photoByteCount += prepared.data.count + (prepared.original?.count ?? 0)
             guard prepared.data.count <= Self.maximumPhotoBytes else {
                 throw BackupExportError.photoTooLarge(prepared.record.originalName)
             }
             guard photoByteCount <= Self.maximumPhotoTotalBytes else {
                 throw BackupExportError.photoDataTooLarge
             }
-            if prepared.wasTranscodedFromHEIC {
+            if prepared.original != nil {
                 transcodedHEICPhotoCount += 1
             }
+            try BackupArchiveReader.validateImage(prepared.data, as: prepared.exportMIME, path: prepared.archivePath)
 
             try add(
                 prepared.data,
@@ -131,6 +133,14 @@ actor BackupExportService {
                 modificationDate: stableDate,
                 to: archive
             )
+            expectedEntrySizes[prepared.archivePath] = prepared.data.count
+            var originalFile: String?
+            if let original = prepared.original {
+                let path = "originals/\(record.id).heic"
+                try add(original, at: path, modificationDate: stableDate, to: archive)
+                expectedEntrySizes[path] = original.count
+                originalFile = path
+            }
             exportPhotos.append(V1ExportPhoto(
                 id: prepared.record.id,
                 boardId: prepared.record.owner.type == .board ? prepared.record.owner.id : nil,
@@ -141,7 +151,8 @@ actor BackupExportService {
                 width: prepared.record.pixelWidth,
                 height: prepared.record.pixelHeight,
                 addedAt: milliseconds(prepared.record.addedAt),
-                file: prepared.archivePath
+                file: prepared.archivePath,
+                originalFile: originalFile
             ))
         }
 
@@ -158,35 +169,25 @@ actor BackupExportService {
             throw BackupExportError.manifestTooLarge
         }
         try add(manifestData, at: "manifest.json", modificationDate: stableDate, to: archive)
+        expectedEntrySizes["manifest.json"] = manifestData.count
 
         let archiveSize = try fileSize(at: partialURL)
         guard archiveSize > 0, archiveSize <= Self.maximumArchiveBytes else {
             throw BackupExportError.archiveTooLarge
         }
 
-        let validation: MigrationDryRunResult
-        do {
-            validation = try await V1BackupReader().inspect(at: partialURL)
-        } catch {
-            throw BackupExportError.validationFailed(error.localizedDescription)
-        }
-        guard validation.report.canImport,
-              validation.report.counts == snapshot.counts else {
-            throw BackupExportError.validationFailed(
-                "Bestandszähler oder Beziehungen weichen nach dem Rücklesen ab."
-            )
-        }
+        try verifyArchive(at: partialURL, expectedEntrySizes: expectedEntrySizes, manifestData: manifestData)
 
         try installArchive(from: partialURL, at: destinationURL)
         return BackupExportResult(
             destinationURL: destinationURL,
             byteCount: archiveSize,
-            counts: validation.report.counts,
+            counts: snapshot.counts,
             transcodedHEICPhotoCount: transcodedHEICPhotoCount
         )
     }
 
-    private func validateCounts(_ counts: InventoryCounts) throws {
+    static func validateCounts(_ counts: InventoryCounts) throws {
         guard counts.boards <= Self.maximumItemsPerKind,
               counts.keycapSets <= Self.maximumItemsPerKind,
               counts.artisanSets <= Self.maximumItemsPerKind,
@@ -196,52 +197,112 @@ actor BackupExportService {
         }
     }
 
-    private func validateIdentifiers(in snapshot: InventorySnapshot) throws {
-        let identifiers = snapshot.boards.map(\.id)
-            + snapshot.keycapSets.map(\.id)
-            + snapshot.artisanSets.map(\.id)
-            + snapshot.switchSets.map(\.id)
-            + snapshot.photos.map(\.id)
-        for identifier in identifiers {
-            guard !identifier.isEmpty,
-                  identifier.unicodeScalars.allSatisfy(Self.identifierCharacters.contains) else {
-                throw BackupExportError.invalidIdentifier(identifier)
+    static func validateInventory(_ snapshot: InventorySnapshot) throws {
+        let boardIDs = try validatedIdentifiers(snapshot.boards.map(\.id))
+        let keycapIDs = try validatedIdentifiers(snapshot.keycapSets.map(\.id))
+        _ = try validatedIdentifiers(snapshot.artisanSets.map(\.id))
+        let switchIDs = try validatedIdentifiers(snapshot.switchSets.map(\.id))
+        let photoIDs = try validatedIdentifiers(snapshot.photos.map(\.id))
+        let names = snapshot.boards.map(\.name) + snapshot.keycapSets.map(\.name)
+            + snapshot.artisanSets.map(\.name) + snapshot.switchSets.map(\.name)
+        let photoOwners = Dictionary(uniqueKeysWithValues: snapshot.photos.map { ($0.id, $0.owner) })
+        var referenced = Set<String>()
+        func validPhotos(_ ids: [String], main: String?, owner: PhotoOwner) -> Bool {
+            let validMain = main?.nilIfEmpty.map { ids.contains($0) } ?? true
+            return validMain && ids.allSatisfy { photoOwners[$0] == owner && referenced.insert($0).inserted }
+        }
+        let validOwners = snapshot.boards.allSatisfy {
+            validPhotos($0.photoIDs, main: $0.mainPhotoID, owner: PhotoOwner(type: .board, id: $0.id))
+        } && snapshot.keycapSets.allSatisfy {
+            validPhotos($0.photoIDs, main: $0.mainPhotoID, owner: PhotoOwner(type: .keycapSet, id: $0.id))
+        } && snapshot.artisanSets.allSatisfy {
+            validPhotos($0.photoIDs, main: $0.mainPhotoID, owner: PhotoOwner(type: .artisanSet, id: $0.id))
+        } && snapshot.switchSets.allSatisfy {
+            validPhotos($0.photoIDs, main: $0.mainPhotoID, owner: PhotoOwner(type: .switchSet, id: $0.id))
+        }
+        let mountedBoards = snapshot.keycapSets.compactMap(\.mountedBoardID)
+            + snapshot.artisanSets.compactMap(\.mountedBoardID)
+        // Older collections may store only one side of a mount. A set may
+        // still link to at most one board across both sides of the relation.
+        var mountByKeycap = [String: String]()
+        let validMounts = snapshot.boards.allSatisfy { board in
+            board.keycapSetIDs.allSatisfy { id in
+                keycapIDs.contains(id) && mountByKeycap.updateValue(board.id, forKey: id) == nil
             }
+        } && snapshot.keycapSets.allSatisfy { set in
+            guard let boardID = mountByKeycap[set.id], let mountedBoardID = set.mountedBoardID?.nilIfEmpty else {
+                return true
+            }
+            return mountedBoardID == boardID
+        }
+        let installations = snapshot.switchInstallations
+
+        var remaining = Dictionary(uniqueKeysWithValues: snapshot.switchSets.map { ($0.id, $0.quantity) })
+        let validQuantities = installations.allSatisfy { installation in
+            guard let available = remaining[installation.switchSetID], installation.quantity >= 0,
+                  installation.quantity <= available else { return false }
+            remaining[installation.switchSetID] = available - installation.quantity
+            return true
+        }
+
+        guard names.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
+              validOwners, referenced == photoIDs, validQuantities,
+              remaining.values.allSatisfy({ $0 >= 0 }),
+              Set(photoIDs.map { $0.lowercased() }).count == photoIDs.count,
+              photoIDs.allSatisfy({ $0.utf8.count <= 250 }),
+              validMounts,
+              mountedBoards.allSatisfy({ $0.isEmpty || boardIDs.contains($0) }),
+              installations.allSatisfy({ boardIDs.contains($0.boardID) && switchIDs.contains($0.switchSetID) }),
+              Set(installations.map { "\($0.boardID):\($0.switchSetID)" }).count == installations.count else {
+            throw BackupExportError.validationFailed(
+                L10n.text("Bestandsdaten enthalten ungültige Einträge oder Beziehungen.")
+            )
         }
     }
 
-    private func preparePhotos(_ records: [PhotoRecord]) throws -> [PreparedBackupPhoto] {
-        try records.sorted { $0.id < $1.id }.map { record in
-            guard let fileName = record.managedFileName else {
-                throw BackupExportError.unsafePhotoFileName(record.relativeFileName)
+    private static func validatedIdentifiers(_ identifiers: [String]) throws -> Set<String> {
+        var seen = Set<String>()
+        for identifier in identifiers {
+            guard !identifier.isEmpty,
+                  identifier.unicodeScalars.allSatisfy(Self.identifierCharacters.contains),
+                  seen.insert(identifier).inserted else {
+                throw BackupExportError.invalidIdentifier(identifier)
             }
-            let sourceURL = layout.currentPhotosDirectoryURL.appendingPathComponent(fileName)
-            guard fileManager.isReadableFile(atPath: sourceURL.path) else {
-                throw BackupExportError.missingPhoto(fileName)
-            }
-            let sourceData = try Data(contentsOf: sourceURL, options: [.mappedIfSafe])
-            guard sourceData.count <= Self.maximumPhotoBytes else {
-                throw BackupExportError.photoTooLarge(record.originalName)
-            }
+        }
+        return seen
+    }
 
-            if record.mimeType == .heic {
-                let jpegData = try transcodeHEICToJPEG(sourceData, name: record.originalName)
-                return PreparedBackupPhoto(
-                    record: record,
-                    data: jpegData,
-                    exportMIME: .jpeg,
-                    archivePath: "photos/\(record.id).jpg",
-                    wasTranscodedFromHEIC: true
-                )
-            }
+    private func preparePhoto(_ record: PhotoRecord) throws -> PreparedBackupPhoto {
+        guard let fileName = record.managedFileName else {
+            throw BackupExportError.unsafePhotoFileName(record.relativeFileName)
+        }
+        let sourceURL = layout.currentPhotosDirectoryURL.appendingPathComponent(fileName)
+        guard fileManager.isReadableFile(atPath: sourceURL.path) else {
+            throw BackupExportError.missingPhoto(fileName)
+        }
+        let sourceData = try Data(contentsOf: sourceURL, options: [.mappedIfSafe])
+        guard sourceData.count <= Self.maximumPhotoBytes else {
+            throw BackupExportError.photoTooLarge(record.originalName)
+        }
+
+        if record.mimeType == .heic {
+            try BackupArchiveReader.validateImage(sourceData, as: .heic, path: fileName)
+            let jpegData = try transcodeHEICToJPEG(sourceData, name: record.originalName)
             return PreparedBackupPhoto(
                 record: record,
-                data: sourceData,
-                exportMIME: record.mimeType,
-                archivePath: "photos/\(record.id).\(record.mimeType.fileExtension)",
-                wasTranscodedFromHEIC: false
+                data: jpegData,
+                exportMIME: .jpeg,
+                archivePath: "photos/\(record.id).jpg",
+                original: sourceData
             )
         }
+        return PreparedBackupPhoto(
+            record: record,
+            data: sourceData,
+            exportMIME: record.mimeType,
+            archivePath: "photos/\(record.id).\(record.mimeType.fileExtension)",
+            original: nil
+        )
     }
 
     private func transcodeHEICToJPEG(_ data: Data, name: String) throws -> Data {
@@ -292,7 +353,8 @@ actor BackupExportService {
                 plate: board.plate,
                 pcb: board.pcb,
                 keycaps: board.legacyKeycapsName,
-                keycapSetId: board.keycapSetID,
+                keycapSetId: board.keycapSetIDs.first,
+                keycapSetIds: board.keycapSetIDs,
                 stabs: board.stabilizers,
                 switches: board.legacySwitchesName,
                 switchSetId: switchIDs.first,
@@ -400,8 +462,9 @@ actor BackupExportService {
         }
 
         return V1ExportManifest(
-            schemaVersion: 6,
+            schemaVersion: V1ExportManifest.currentSchemaVersion,
             format: "keyboard-manager-zip",
+            producer: V1ExportManifest.nativeProducer,
             meta: V1ExportMetadata(
                 version: appVersion,
                 createdAt: milliseconds(snapshot.metadata.createdAt),
@@ -446,6 +509,48 @@ actor BackupExportService {
         }
     }
 
+    private func verifyArchive(
+        at url: URL,
+        expectedEntrySizes: [String: Int],
+        manifestData: Data
+    ) throws {
+        let invalidArchive = BackupExportError.validationFailed(
+            L10n.text("Das ZIP-Archiv konnte nicht sicher geöffnet werden.")
+        )
+        do {
+            let archive = try Archive(url: url, accessMode: .read)
+            var remainingEntries = expectedEntrySizes
+            var writtenManifest = Data()
+            for entry in archive {
+                guard entry.type == .file,
+                      let expectedSize = remainingEntries.removeValue(forKey: entry.path),
+                      entry.uncompressedSize == UInt64(expectedSize) else {
+                    throw invalidArchive
+                }
+                var bytesRead = 0
+                let checksum = try archive.extract(entry) { chunk in
+                    guard chunk.count <= expectedSize - bytesRead else { throw invalidArchive }
+                    bytesRead += chunk.count
+                    if entry.path == "manifest.json" {
+                        writtenManifest.append(chunk)
+                    }
+                }
+                guard bytesRead == expectedSize, checksum == entry.checksum else {
+                    throw BackupExportError.validationFailed(
+                        L10n.text("CRC-Prüfung fehlgeschlagen: %@", arguments: entry.path)
+                    )
+                }
+            }
+            guard remainingEntries.isEmpty, writtenManifest == manifestData else {
+                throw invalidArchive
+            }
+        } catch let error as BackupExportError {
+            throw error
+        } catch {
+            throw BackupExportError.validationFailed(error.localizedDescription)
+        }
+    }
+
     private func installArchive(from partialURL: URL, at destinationURL: URL) throws {
         if fileManager.fileExists(atPath: destinationURL.path) {
             _ = try fileManager.replaceItemAt(
@@ -478,12 +583,16 @@ private struct PreparedBackupPhoto {
     var data: Data
     var exportMIME: PhotoMIMEType
     var archivePath: String
-    var wasTranscodedFromHEIC: Bool
+    var original: Data?
 }
 
-private struct V1ExportManifest: Encodable {
+struct V1ExportManifest: Codable {
+    static let nativeProducer = "de.r3d42.KeyboardManagerV2"
+    static let legacySchemaVersion = 6
+    static let currentSchemaVersion = 7
     var schemaVersion: Int
     var format: String
+    var producer: String?
     var meta: V1ExportMetadata
     var lists: [String: [String]]
     var gallery: V1ExportGallery
@@ -494,7 +603,7 @@ private struct V1ExportManifest: Encodable {
     var photos: [V1ExportPhoto]
 }
 
-private struct V1ExportMetadata: Encodable {
+struct V1ExportMetadata: Codable {
     var version: String
     var createdAt: Int64
     var updatedAt: Int64
@@ -503,11 +612,11 @@ private struct V1ExportMetadata: Encodable {
     var note: String
 }
 
-private struct V1ExportGallery: Encodable {
+struct V1ExportGallery: Codable {
     var showFields: [String: Bool]
 }
 
-private struct V1ExportBoard: Encodable {
+struct V1ExportBoard: Codable {
     var id: String
     var name: String
     var manufacturer: String
@@ -516,6 +625,7 @@ private struct V1ExportBoard: Encodable {
     var pcb: String
     var keycaps: String
     var keycapSetId: String?
+    var keycapSetIds: [String]?
     var stabs: String
     var switches: String
     var switchSetId: String?
@@ -528,7 +638,7 @@ private struct V1ExportBoard: Encodable {
     var updatedAt: Int64
 }
 
-private struct V1ExportKeycapSet: Encodable {
+struct V1ExportKeycapSet: Codable {
     var id: String
     var name: String
     var manufacturer: String
@@ -550,7 +660,7 @@ private struct V1ExportKeycapSet: Encodable {
     var updatedAt: Int64
 }
 
-private struct V1ExportArtisanSet: Encodable {
+struct V1ExportArtisanSet: Codable {
     var id: String
     var name: String
     var manufacturer: String
@@ -572,7 +682,7 @@ private struct V1ExportArtisanSet: Encodable {
     var updatedAt: Int64
 }
 
-private struct V1ExportSwitchSet: Encodable {
+struct V1ExportSwitchSet: Codable {
     var id: String
     var name: String
     var switchType: String
@@ -605,18 +715,18 @@ private struct V1ExportSwitchSet: Encodable {
     var updatedAt: Int64
 }
 
-private struct V1ExportSwitchInstallation: Encodable {
+struct V1ExportSwitchInstallation: Codable {
     var boardId: String
     var quantity: Int
 }
 
-private struct V1ExportImportedBoardAllocation: Encodable {
+struct V1ExportImportedBoardAllocation: Codable {
     var board: String
     var quantity: Int
     var inferred: Bool
 }
 
-private struct V1ExportPhoto: Encodable {
+struct V1ExportPhoto: Codable {
     var id: String
     var boardId: String?
     var ownerType: String
@@ -627,4 +737,5 @@ private struct V1ExportPhoto: Encodable {
     var height: Int?
     var addedAt: Int64
     var file: String
+    var originalFile: String?
 }

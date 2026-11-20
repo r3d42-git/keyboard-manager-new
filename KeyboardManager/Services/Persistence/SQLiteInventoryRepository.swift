@@ -29,7 +29,7 @@ actor SQLiteInventoryRepository: InventoryRepository {
 
     let databaseURL: URL
 
-    init(databaseURL: URL = MigrationStorageLayout.default.currentDatabaseURL) {
+    init(databaseURL: URL = InventoryStorageLayout.default.currentDatabaseURL) {
         self.databaseURL = databaseURL.standardizedFileURL
     }
 
@@ -87,7 +87,9 @@ actor SQLiteInventoryRepository: InventoryRepository {
             let byteCount = Int(sqlite3_column_bytes(statement, 0))
             let data = Data(bytes: bytes, count: byteCount)
             do {
-                return try decoder().decode(InventorySnapshot.self, from: data)
+                var snapshot = try decoder().decode(InventorySnapshot.self, from: data)
+                snapshot.completeOneSidedKeycapMounts()
+                return snapshot
             } catch {
                 throw SQLiteInventoryRepositoryError.decode(error.localizedDescription)
             }

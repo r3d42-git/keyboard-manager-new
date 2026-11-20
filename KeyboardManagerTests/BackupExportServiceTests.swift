@@ -10,7 +10,7 @@ final class BackupExportServiceTests: XCTestCase {
     func testExportIsReadableAndPreservesManagedPhoto() async throws {
         let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
-        let destination = fixture.directory.appendingPathComponent("roundtrip.zip")
+        let destination = fixture.directory.appendingPathComponent("backup.zip")
         let before = try Data(contentsOf: fixture.photoURL)
 
         let result = try await fixture.service.export(
@@ -19,7 +19,12 @@ final class BackupExportServiceTests: XCTestCase {
             exportedAt: fixture.exportedAt,
             appVersion: "0.1.0-test"
         )
-        let inspected = try await V1BackupReader().inspect(at: destination)
+        let archive = try Archive(url: destination, accessMode: .read)
+        let manifest = try readManifest(in: archive)
+        let metadata = try XCTUnwrap(manifest["meta"] as? [String: Any])
+        let board = try XCTUnwrap((manifest["boards"] as? [[String: Any]])?.first)
+        let switchSet = try XCTUnwrap((manifest["switchSets"] as? [[String: Any]])?.first)
+        let photo = try XCTUnwrap((manifest["photos"] as? [[String: Any]])?.first)
         let after = try Data(contentsOf: fixture.photoURL)
 
         XCTAssertEqual(before, after, "Der Export darf das verwaltete Originalfoto nicht verändern.")
@@ -27,17 +32,22 @@ final class BackupExportServiceTests: XCTestCase {
         XCTAssertGreaterThan(result.byteCount, 0)
         XCTAssertEqual(result.counts, fixture.snapshot.counts)
         XCTAssertEqual(result.transcodedHEICPhotoCount, 0)
-        XCTAssertEqual(inspected.report.schemaVersion, 6)
-        XCTAssertEqual(inspected.report.sourceVersion, "0.1.0-test")
-        XCTAssertEqual(inspected.report.errorCount, 0, "Issues: \(inspected.report.issues)")
-        XCTAssertEqual(inspected.snapshot.boards.first?.keycapSetID, "keycap_1")
+        XCTAssertEqual(metadata["version"] as? String, "0.1.0-test")
+        XCTAssertEqual(board["keycapSetId"] as? String, "keycap_1")
+        XCTAssertEqual(board["keycapSetIds"] as? [String], ["keycap_1"])
+        XCTAssertEqual(board["switchSetIds"] as? [String], ["switch_1"])
+        XCTAssertEqual(board["switchSetQuantities"] as? [String: Int], ["switch_1": 70])
+        XCTAssertEqual(board["photoIds"] as? [String], ["photo_1"])
+        XCTAssertEqual(board["mainPhotoId"] as? String, "photo_1")
+        let installation = (switchSet["installations"] as? [[String: Any]])?.first
+        XCTAssertEqual(installation?["boardId"] as? String, "board_1")
+        XCTAssertEqual(installation?["quantity"] as? Int, 70)
+        XCTAssertEqual(photo["ownerType"] as? String, "board")
+        XCTAssertEqual(photo["ownerId"] as? String, "board_1")
+        XCTAssertEqual(photo["boardId"] as? String, "board_1")
         XCTAssertEqual(
-            inspected.snapshot.switchInstallations,
-            [SwitchInstallation(switchSetID: "switch_1", boardID: "board_1", quantity: 70)]
-        )
-        XCTAssertEqual(
-            inspected.snapshot.photos.first?.owner,
-            PhotoOwner(type: .board, id: "board_1")
+            try extract(try XCTUnwrap(photo["file"] as? String), from: archive),
+            before
         )
     }
 
@@ -109,10 +119,13 @@ final class BackupExportServiceTests: XCTestCase {
             exportedAt: fixture.exportedAt.addingTimeInterval(2),
             appVersion: "second"
         )
-        let inspected = try await V1BackupReader().inspect(at: destination)
+        let archive = try Archive(url: destination, accessMode: .read)
+        let manifest = try readManifest(in: archive)
+        let metadata = try XCTUnwrap(manifest["meta"] as? [String: Any])
+        let board = try XCTUnwrap((manifest["boards"] as? [[String: Any]])?.first)
 
-        XCTAssertEqual(inspected.report.sourceVersion, "second")
-        XCTAssertEqual(inspected.snapshot.boards.first?.name, "Ersetztes Board")
+        XCTAssertEqual(metadata["version"] as? String, "second")
+        XCTAssertEqual(board["name"] as? String, "Ersetztes Board")
     }
 
     func testManifestUsesV1SchemaSixPhotoLayout() async throws {
@@ -129,16 +142,11 @@ final class BackupExportServiceTests: XCTestCase {
         let archive = try Archive(url: destination, accessMode: .read)
         let paths = Array(archive).map(\.path)
         XCTAssertEqual(paths, ["photos/photo_1.png", "manifest.json"])
-        let manifestEntry = try XCTUnwrap(archive["manifest.json"])
-        var manifestData = Data()
-        _ = try archive.extract(manifestEntry) { manifestData.append($0) }
-        let object = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
-        )
-        let photos = try XCTUnwrap(object["photos"] as? [[String: Any]])
+        let manifest = try readManifest(in: archive)
+        let photos = try XCTUnwrap(manifest["photos"] as? [[String: Any]])
 
-        XCTAssertEqual(object["schemaVersion"] as? Int, 6)
-        XCTAssertEqual(object["format"] as? String, "keyboard-manager-zip")
+        XCTAssertEqual(manifest["schemaVersion"] as? Int, 7)
+        XCTAssertEqual(manifest["format"] as? String, "keyboard-manager-zip")
         XCTAssertEqual(photos.first?["file"] as? String, "photos/photo_1.png")
         XCTAssertEqual(photos.first?["ownerType"] as? String, "board")
     }
@@ -164,12 +172,62 @@ final class BackupExportServiceTests: XCTestCase {
             exportedAt: fixture.exportedAt,
             appVersion: "0.1.0-test"
         )
-        let inspected = try await V1BackupReader().inspect(at: destination)
+        let archive = try Archive(url: destination, accessMode: .read)
+        let manifest = try readManifest(in: archive)
+        let photo = try XCTUnwrap((manifest["photos"] as? [[String: Any]])?.first)
 
         XCTAssertEqual(result.transcodedHEICPhotoCount, 1)
         XCTAssertEqual(try Data(contentsOf: heicURL), before)
-        XCTAssertEqual(inspected.snapshot.photos.first?.mimeType, .jpeg)
-        XCTAssertEqual(inspected.snapshot.photos.first?.relativeFileName, "photo_1.jpg")
+        XCTAssertEqual(photo["type"] as? String, "image/jpeg")
+        XCTAssertEqual(photo["file"] as? String, "photos/photo_1.jpg")
+        let data = try extract("photos/photo_1.jpg", from: archive)
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData, nil))
+        XCTAssertEqual(CGImageSourceGetType(source) as String?, UTType.jpeg.identifier)
+        XCTAssertNotNil(CGImageSourceCreateImageAtIndex(source, 0, nil))
+    }
+
+    func testFailedValidationPreservesExistingDestination() async throws {
+        var fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        let destination = fixture.directory.appendingPathComponent("backup.zip")
+        _ = try await fixture.service.export(
+            snapshot: fixture.snapshot,
+            to: destination,
+            exportedAt: fixture.exportedAt,
+            appVersion: "0.1.0-test"
+        )
+        let before = try Data(contentsOf: destination)
+        fixture.snapshot.boards[0].mainPhotoID = "orphaned"
+
+        do {
+            _ = try await fixture.service.export(
+                snapshot: fixture.snapshot,
+                to: destination,
+                exportedAt: fixture.exportedAt,
+                appVersion: "0.1.0-test"
+            )
+            XCTFail("Ungültige Bildverweise dürfen ein Backup nicht ersetzen.")
+        } catch let error as BackupExportError {
+            guard case .validationFailed = error else {
+                return XCTFail("Unerwarteter Fehler: \(error)")
+            }
+        }
+
+        XCTAssertEqual(try Data(contentsOf: destination), before)
+    }
+
+    private func readManifest(in archive: Archive) throws -> [String: Any] {
+        let data = try extract("manifest.json", from: archive)
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func extract(_ path: String, from archive: Archive) throws -> Data {
+        let entry = try XCTUnwrap(archive[path])
+        var data = Data()
+        let checksum = try archive.extract(entry) { data.append($0) }
+        XCTAssertEqual(checksum, entry.checksum)
+        XCTAssertEqual(UInt64(data.count), entry.uncompressedSize)
+        return data
     }
 
     private func makeFixture() throws -> (
@@ -181,7 +239,7 @@ final class BackupExportServiceTests: XCTestCase {
     ) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("KeyboardManagerBackupTests-\(UUID().uuidString)", isDirectory: true)
-        let layout = MigrationStorageLayout(rootURL: directory.appendingPathComponent("AppData"))
+        let layout = InventoryStorageLayout(rootURL: directory.appendingPathComponent("AppData"))
         try FileManager.default.createDirectory(
             at: layout.currentPhotosDirectoryURL,
             withIntermediateDirectories: true
@@ -197,7 +255,7 @@ final class BackupExportServiceTests: XCTestCase {
             name: "Testboard",
             manufacturer: "Test",
             format: "65%",
-            keycapSetID: "keycap_1",
+            keycapSetIDs: ["keycap_1"],
             photoIDs: ["photo_1"],
             mainPhotoID: "photo_1",
             createdAt: date,

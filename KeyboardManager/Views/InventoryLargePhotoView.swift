@@ -24,73 +24,88 @@ struct InventoryLargePhotoView: View {
     }
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-
+        VStack(spacing: 0) {
+            header
+            Divider()
             ManagedPhotoView(
                 store: store,
                 record: store.photoRecord(id: navigator.selectedPhotoID ?? item.mainPhotoID ?? item.photoIDs.first),
                 purpose: .full
             )
-            .padding(44)
-
-            VStack {
-                HStack {
-                    Button("Großansicht schließen", systemImage: "xmark") {
-                        onDismiss()
-                    }
-                    .keyboardShortcut(.cancelAction)
-
-                    Spacer()
-
-                    Text(positionText)
-                        .foregroundStyle(.white.opacity(0.85))
-                        .monospacedDigit()
-
-                    Spacer()
-
-                    HStack(spacing: 8) {
-                        Button {
-                            navigator.stepPhoto(by: -1)
-                        } label: {
-                            Label("Vorheriges Foto", systemImage: "chevron.left")
-                                .labelStyle(.iconOnly)
-                        }
-                        .disabled(currentIndex == 0)
-
-                        Button {
-                            navigator.stepPhoto(by: 1)
-                        } label: {
-                            Label("Nächstes Foto", systemImage: "chevron.right")
-                                .labelStyle(.iconOnly)
-                        }
-                        .disabled(currentIndex == item.photoIDs.count - 1)
-                    }
-                }
-                .padding(20)
-                .foregroundStyle(.white)
-
-                Spacer()
-            }
+            .padding(18)
+            .background(.black)
         }
+        .environment(\.colorScheme, .dark)
         .onExitCommand {
             onDismiss()
         }
         .onChange(of: navigator.selectedPhotoID) { _, newValue in
             onPhotoSelection(newValue)
         }
-        .frame(minWidth: 800, minHeight: 450)
+        .frame(minWidth: 450, minHeight: 320)
     }
 
-    private var currentIndex: Int {
-        navigator.currentIndex
-    }
+    private var header: some View {
+        HStack(spacing: 16) {
+            Button("Großansicht schließen", systemImage: "xmark", action: onDismiss)
+                .labelStyle(.iconOnly)
+                .help("Großansicht schließen")
+                .keyboardShortcut(.cancelAction)
 
-    private var positionText: String {
-        guard !item.photoIDs.isEmpty else { return "" }
-        return L10n.text("%lld von %lld", arguments: currentIndex + 1, item.photoIDs.count)
-    }
+            Text(item.name)
+                .font(.headline)
+                .lineLimit(1)
+                .help(item.name)
+                .accessibilityAddTraits(.isHeader)
 
+            Spacer(minLength: 8)
+
+            if navigator.photoIDs.count > 1 {
+                InventoryPhotoStepper(
+                    index: navigator.currentIndex,
+                    count: navigator.photoIDs.count,
+                    usesArrowKeys: true,
+                    step: navigator.stepPhoto(by:)
+                )
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.bar)
+    }
+}
+
+struct InventoryPhotoStepper: View {
+    var index: Int
+    var count: Int
+    var usesArrowKeys = false
+    var step: (Int) -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button("Vorheriges Foto", systemImage: "chevron.left") {
+                step(-1)
+            }
+            .help("Vorheriges Foto")
+            .keyboardShortcut(usesArrowKeys ? KeyboardShortcut(.leftArrow, modifiers: []) : nil)
+            .disabled(index == 0)
+
+            Text(L10n.text("%lld von %lld", arguments: index + 1, count))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .font(.callout)
+                .fixedSize()
+
+            Button("Nächstes Foto", systemImage: "chevron.right") {
+                step(1)
+            }
+            .help("Nächstes Foto")
+            .keyboardShortcut(usesArrowKeys ? KeyboardShortcut(.rightArrow, modifiers: []) : nil)
+            .disabled(index >= count - 1)
+        }
+        .labelStyle(.iconOnly)
+        .fixedSize()
+    }
 }
 
 @MainActor
@@ -151,7 +166,7 @@ final class InventoryLargePhotoWindowController: NSObject, NSWindowDelegate {
         let sizingWindow = parentWindow?.sheetParent ?? parentWindow
         let overlayFrame = sizingWindow?.frame
             ?? NSRect(x: 0, y: 0, width: 1_600, height: 900)
-        let window = NSPanel(
+        let window = InventoryPhotoPanel(
             contentRect: overlayFrame,
             styleMask: [.borderless],
             backing: .buffered,
@@ -195,6 +210,10 @@ final class InventoryLargePhotoWindowController: NSObject, NSWindowDelegate {
         navigator.stepPhoto(by: offset)
         return true
     }
+}
+
+private final class InventoryPhotoPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
 }
 
 struct SpotlightWindowReference: NSViewRepresentable {

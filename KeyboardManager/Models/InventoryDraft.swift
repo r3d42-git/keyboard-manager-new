@@ -20,7 +20,7 @@ struct InventoryDraft: Hashable, Sendable {
     var plate = ""
     var pcb = ""
     var stabilizers = ""
-    var keycapSetID: String?
+    var keycapSetIDs: [String] = []
     var legacyKeycapsName = ""
     var legacySwitchesName = ""
 
@@ -70,7 +70,7 @@ struct InventoryDraft: Hashable, Sendable {
         stabilizers = board.stabilizers
         notes = board.remark
         legacyKeycapsName = board.legacyKeycapsName
-        keycapSetID = board.keycapSetID
+        keycapSetIDs = board.keycapSetIDs
         legacySwitchesName = board.legacySwitchesName
         photoIDs = board.photoIDs
         mainPhotoID = board.mainPhotoID

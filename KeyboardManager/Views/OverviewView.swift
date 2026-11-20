@@ -4,71 +4,37 @@ import SwiftUI
 struct OverviewView: View {
     @Bindable var store: InventoryStore
     @State private var spotlightItemID: String?
-    @State private var isDeleteConfirmationPresented = false
-    @State private var isReportExportPresented = false
-
-    private let columns = [
-        GridItem(.adaptive(minimum: 150, maximum: 230), spacing: 12)
-    ]
+    @State private var deletionTarget: InventoryItemSummary?
 
     var body: some View {
+        let items = store.collectionResults
+        let selectedItem = currentSelection.flatMap { id in items.first { $0.id == id } }
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 14) {
-                statusBanner
-                countCards
-
-                Picker("Inventartyp", selection: $store.selectedKind) {
-                    ForEach(InventoryItemKind.allCases) { kind in
-                        Text(kind.displayName).tag(kind)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .onChange(of: store.selectedKind) {
-                    store.selectedItemID = currentSelection
-                    normalizeSort()
-                }
-
-                InventoryFilterBar(
-                    kind: store.selectedKind,
-                    items: items,
-                    filters: filtersBinding,
-                    sort: sortBinding,
-                    resultCount: filteredItems.count
-                )
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 16)
-            .padding(.bottom, 12)
-
-            Divider()
-
-            if filteredItems.isEmpty {
-                emptyState
+            InventoryFilterBar(store: store, kinds: InventoryItemKind.allCases, resultCount: items.count)
+            if items.isEmpty {
+                InventoryCollectionEmptyView(store: store)
             } else {
-                inventoryTable
+                inventoryTable(items)
             }
-
-            actionBar
+            statusBanner
         }
-        .searchable(
-            text: Binding(
-                get: { currentFilters.searchText },
-                set: {
-                    store.overviewFiltersByKind[
-                        store.selectedKind,
-                        default: InventoryFilters()
-                    ].searchText = $0
+        .searchable(text: $store.collectionFilters.searchText, placement: .toolbar, prompt: "Bestand durchsuchen")
+        .toolbar {
+            ToolbarItem(placement: .secondaryAction) {
+                Menu {
+                    itemActions(selectedItem)
+                } label: {
+                    Label("Weitere Aktionen", systemImage: "ellipsis.circle")
                 }
-            ),
-            placement: .toolbar,
-            prompt: "Bestand durchsuchen"
-        )
+                .disabled(selectedItem == nil)
+                .accessibilityIdentifier("overview.actions")
+                .help("Weitere Aktionen")
+            }
+        }
         .onAppear {
-            if let id = store.selectedItemID,
-               items.contains(where: { $0.id == id }) {
+            if let id = store.selectedItemID, items.contains(where: { $0.id == id }) {
                 store.updateOverviewSelection(id, for: store.selectedKind)
             }
-            normalizeSort()
         }
         .sheet(
             isPresented: Binding(
@@ -79,233 +45,218 @@ struct OverviewView: View {
             if let spotlightItemID {
                 InventorySpotlightView(
                     store: store,
-                    items: filteredItems,
+                    items: items,
                     initialID: spotlightItemID
                 )
             }
         }
         .confirmationDialog(
             "Eintrag wirklich löschen?",
-            isPresented: $isDeleteConfirmationPresented,
-            titleVisibility: .visible
-        ) {
+            isPresented: Binding(
+                get: { deletionTarget != nil },
+                set: { if !$0 { deletionTarget = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: deletionTarget
+        ) { item in
             Button("Löschen", role: .destructive) {
-                guard let selection = currentSelection else { return }
                 Task {
-                    let deleted = await store.deleteItem(kind: store.selectedKind, id: selection)
-                    if deleted {
-                        store.updateOverviewSelection(nil, for: store.selectedKind)
+                    let deleted = await store.deleteItem(kind: item.kind, id: item.id)
+                    if deleted, store.overviewSelectionByKind[item.kind] == item.id {
+                        store.updateOverviewSelection(nil, for: item.kind)
                     }
                 }
             }
             Button("Abbrechen", role: .cancel) {}
-        } message: {
-            Text("Der Eintrag, seine verwalteten Fotos und seine Beziehungen werden konsistent entfernt.")
-        }
-        .sheet(isPresented: $isReportExportPresented) {
-            InventoryReportExportView(currentKind: store.selectedKind) { options in
-                guard let destinationURL = InventoryReportSavePanel.chooseDestination(for: options.format) else {
-                    return
-                }
-                let context = InventoryReportContext(
-                    currentKind: store.selectedKind,
-                    filtersByKind: store.overviewFiltersByKind,
-                    sortsByKind: store.overviewSortsByKind
-                )
-                Task {
-                    await store.exportReport(context: context, options: options, to: destinationURL)
-                }
-            }
+        } message: { item in
+            Text("„\(item.name)“ und die zugehörigen Fotos werden gelöscht. Verknüpfungen werden gelöst.")
         }
     }
 
     @ViewBuilder
-    private var inventoryTable: some View {
+    private func inventoryTable(_ items: [InventoryItemSummary]) -> some View {
         switch store.selectedKind {
         case .board:
             configuredTable(
-                Table(filteredItems, selection: selectionBinding) {
-                    photoColumn
-                    TableColumn("Keyboard") { row in
-                        nameCell(row, detail: row.secondaryDetail)
+                items,
+                Table(items, selection: selectionBinding, sortOrder: tableSortOrder) {
+                    TableColumn("Keyboard", sortUsing: InventorySort(.name)) { row in
+                        itemCell(row)
                     }
-                    .width(min: 130, ideal: 180)
-                    TableColumn("Hersteller", value: \.manufacturer)
-                        .width(min: 90, ideal: 130)
-                    TableColumn("Format", value: \.format)
-                        .width(min: 65, ideal: 80)
-                    TableColumn("Switches") { row in
+                    .width(min: 148, ideal: 235)
+                    TableColumn("Hersteller", sortUsing: InventorySort(.manufacturer)) { row in
+                        Text(row.manufacturer)
+                    }
+                    .width(min: 70, ideal: 130)
+                    TableColumn("Format", sortUsing: InventorySort(.primaryDetail)) { row in
+                        Text(row.format)
+                    }
+                    .width(min: 50, ideal: 80)
+                    TableColumn("Switches", sortUsing: InventorySort(.switches)) { row in
                         summaryCell(row.switchesSummary)
                     }
-                    .width(min: 150, ideal: 230)
-                    TableColumn("Keycaps") { row in
+                    .width(min: 88, ideal: 210)
+                    TableColumn("Keycaps", sortUsing: InventorySort(.keycaps)) { row in
                         summaryCell(row.keycapsSummary)
                     }
-                    .width(min: 130, ideal: 190)
+                    .width(min: 85, ideal: 185)
                     photoCountColumn
                 }
             )
-        case .keycapSet:
+        case .keycapSet, .artisanSet:
+            let nameTitle: LocalizedStringKey = store.selectedKind == .keycapSet ? "Set" : "Artisan"
+            let contentsTitle: LocalizedStringKey = store.selectedKind == .keycapSet ? "Kits" : "Tags"
             configuredTable(
-                Table(filteredItems, selection: selectionBinding) {
-                    photoColumn
-                    TableColumn("Set") { row in
-                        nameCell(row, detail: row.secondaryDetail)
+                items,
+                Table(items, selection: selectionBinding, sortOrder: tableSortOrder) {
+                    TableColumn(nameTitle, sortUsing: InventorySort.name) { row in
+                        itemCell(row)
                     }
-                    .width(min: 130, ideal: 190)
-                    TableColumn("Hersteller", value: \.manufacturer)
-                        .width(min: 90, ideal: 140)
-                    TableColumn("Profil", value: \.profile)
-                        .width(min: 70, ideal: 100)
-                    TableColumn("Kits") { row in
+                    .width(min: 148, ideal: 235)
+                    TableColumn("Hersteller", sortUsing: InventorySort(.manufacturer)) { row in
+                        Text(row.manufacturer)
+                    }
+                    .width(min: 70, ideal: 130)
+                    TableColumn("Profil", sortUsing: InventorySort(.primaryDetail)) { row in
+                        Text(row.profile)
+                    }
+                    .width(min: 50, ideal: 85)
+                    TableColumn(contentsTitle, sortUsing: InventorySort(.contents)) { row in
                         summaryCell(row.contentsSummary)
                     }
-                    .width(min: 160, ideal: 260)
-                    TableColumn("Board") { row in
+                    .width(min: 90, ideal: 245)
+                    TableColumn("Board", sortUsing: InventorySort(.mountedBoard)) { row in
                         summaryCell(row.mountedBoardSummary)
                     }
-                    .width(min: 120, ideal: 180)
-                    photoCountColumn
-                }
-            )
-        case .artisanSet:
-            configuredTable(
-                Table(filteredItems, selection: selectionBinding) {
-                    photoColumn
-                    TableColumn("Artisan") { row in
-                        nameCell(row, detail: row.secondaryDetail)
-                    }
-                    .width(min: 130, ideal: 190)
-                    TableColumn("Hersteller", value: \.manufacturer)
-                        .width(min: 90, ideal: 140)
-                    TableColumn("Profil", value: \.profile)
-                        .width(min: 70, ideal: 100)
-                    TableColumn("Tags") { row in
-                        summaryCell(row.contentsSummary)
-                    }
-                    .width(min: 160, ideal: 260)
-                    TableColumn("Board") { row in
-                        summaryCell(row.mountedBoardSummary)
-                    }
-                    .width(min: 120, ideal: 180)
+                    .width(min: 80, ideal: 155)
                     photoCountColumn
                 }
             )
         case .switchSet:
             configuredTable(
-                Table(filteredItems, selection: selectionBinding) {
-                    photoColumn
-                    TableColumn("Name / Bezeichnung") { row in
-                        nameCell(row, detail: row.secondaryDetail)
+                items,
+                Table(items, selection: selectionBinding, sortOrder: tableSortOrder) {
+                    TableColumn("Name", sortUsing: InventorySort(.name)) { row in
+                        itemCell(row)
                     }
-                    .width(min: 150, ideal: 220)
-                    TableColumn("Switch Type", value: \.switchType)
-                        .width(min: 90, ideal: 120)
-                    TableColumn(Text(stockColumnTitle)) { row in
-                        Text(row.stockSummary)
-                            .monospacedDigit()
+                    .width(min: 148, ideal: 235)
+                    stockColumn(.quantity, value: \.quantity)
+                    stockColumn(.installedQuantity, value: \.installedQuantity)
+                    stockColumn(.availableQuantity, value: \.availableQuantity)
+                    TableColumn("Typ", sortUsing: InventorySort(.primaryDetail)) { row in
+                        Text(row.switchType)
                     }
-                    .width(min: 170, ideal: 210)
-                    TableColumn("Board") { row in
+                    .width(min: 65, ideal: 105)
+                    TableColumn("Board", sortUsing: InventorySort(.mountedBoard)) { row in
                         summaryCell(row.mountedBoardSummary)
                     }
-                    .width(min: 160, ideal: 250)
-                    TableColumn("Operating Force", value: \.operatingForce)
-                        .width(min: 95, ideal: 130)
+                    .width(min: 90, ideal: 210)
+                    TableColumn("Betätigungskraft", sortUsing: InventorySort(.operatingForce)) { row in
+                        Text(row.operatingForce)
+                    }
+                    .width(min: 82, ideal: 120)
                     photoCountColumn
                 }
             )
         }
     }
 
-    private var photoColumn: TableColumn<InventoryItemSummary, Never, some View, Text> {
-        TableColumn("Foto") { row in
+    private func itemCell(_ item: InventoryItemSummary) -> some View {
+        HStack(spacing: 8) {
             Button {
-                store.updateOverviewSelection(row.id, for: store.selectedKind)
-                spotlightItemID = row.id
+                openDetails(item)
             } label: {
-                ManagedPhotoView(
-                    store: store,
-                    record: store.photoRecord(id: row.mainPhotoID ?? row.photoIDs.first),
-                    purpose: .thumbnail,
-                    showsCompactPlaceholder: true
-                )
-                .frame(width: 68, height: 46)
-                .background(.quaternary.opacity(0.35))
-                .clipShape(.rect(cornerRadius: 6))
+                ZStack {
+                    if let record = store.photoRecord(id: item.mainPhotoID ?? item.photoIDs.first) {
+                        ManagedPhotoView(store: store, record: record, purpose: .thumbnail, showsCompactPlaceholder: true)
+                    } else {
+                        Image(systemName: item.kind.systemImage)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Kein Foto")
+                    }
+                }
+                .frame(width: 36, height: 26)
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(
-                L10n.text("Details zu %@ öffnen", arguments: row.name)
-            )
+            .accessibilityLabel(L10n.text("Details zu %@ öffnen", arguments: item.name))
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(item.name)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                if !item.secondaryDetail.isEmpty {
+                    Text(item.secondaryDetail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
         }
-        .width(78)
+        .padding(.vertical, 1)
+        .help([item.name, item.secondaryDetail].filter { !$0.isEmpty }.joined(separator: "\n"))
     }
 
-    private var photoCountColumn: TableColumn<InventoryItemSummary, Never, some View, Text> {
-        TableColumn("Fotos") { row in
+    private var photoCountColumn: TableColumn<InventoryItemSummary, InventorySort, some View, Text> {
+        TableColumn("Fotos", sortUsing: InventorySort(.photoCount)) { row in
             Text(row.photoCount, format: .number)
                 .monospacedDigit()
         }
-        .width(60)
+        .width(min: 60, ideal: 66, max: 84)
     }
 
-    private func configuredTable<Content: View>(_ table: Content) -> some View {
+    private func configuredTable<Content: View>(_ items: [InventoryItemSummary], _ table: Content) -> some View {
         table
-        .contextMenu(forSelectionType: String.self) { selectedIDs in
-            if let id = selectedIDs.first {
-                Button("Details", systemImage: "eye") {
-                    store.updateOverviewSelection(id, for: store.selectedKind)
-                    spotlightItemID = id
+            .tableStyle(.inset)
+            .alternatingRowBackgrounds(.enabled)
+            .contextMenu(forSelectionType: String.self) { selectedIDs in
+                if let id = selectedIDs.first, let item = items.first(where: { $0.id == id }) {
+                    itemActions(item)
                 }
-                Button("Bearbeiten", systemImage: "pencil") {
-                    store.editItem(kind: store.selectedKind, id: id)
-                }
-                Button("Name kopieren", systemImage: "doc.on.doc") {
-                    if let item = filteredItems.first(where: { $0.id == id }) {
-                        copyToPasteboard(item.name)
-                    }
-                }
-                Divider()
-                Button("Löschen", systemImage: "trash", role: .destructive) {
-                    store.updateOverviewSelection(id, for: store.selectedKind)
-                    isDeleteConfirmationPresented = true
+            } primaryAction: { selectedIDs in
+                if let id = selectedIDs.first, let item = items.first(where: { $0.id == id }) {
+                    openDetails(item)
                 }
             }
-        } primaryAction: { selectedIDs in
-            if let id = selectedIDs.first {
-                store.updateOverviewSelection(id, for: store.selectedKind)
-                spotlightItemID = id
+            .background {
+                OverviewTableFocusBridge(
+                    restoreRequest: activeRestoreRequest,
+                    selectedRow: activeRestoreRequest?.itemID.flatMap { id in items.firstIndex { $0.id == id } },
+                    rowCount: items.count
+                ) { offset in
+                    store.updateOverviewScrollOffset(offset, for: store.selectedKind)
+                } onRestoreApplied: { revision in
+                    store.consumeOverviewRestoreRequest(revision: revision)
+                }
             }
-        }
-        .background {
-            OverviewTableFocusBridge(
-                restoreRequest: activeRestoreRequest,
-                selectedRow: restoredRowIndex,
-                rowCount: filteredItems.count
-            ) { offset in
-                store.updateOverviewScrollOffset(offset, for: store.selectedKind)
-            } onRestoreApplied: { revision in
-                store.consumeOverviewRestoreRequest(revision: revision)
-            }
-        }
-        .accessibilityIdentifier("overview.table")
+            .accessibilityIdentifier("overview.table")
     }
 
-    private func nameCell(_ row: InventoryItemSummary, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(row.name)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-            if !detail.isEmpty {
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+    @ViewBuilder
+    private func itemActions(_ item: InventoryItemSummary?) -> some View {
+        Group {
+            Button("Details", systemImage: "eye") {
+                if let item { openDetails(item) }
+            }
+            Button("Bearbeiten", systemImage: "pencil") {
+                if let item { store.editItem(kind: item.kind, id: item.id) }
+            }
+            Button("Name kopieren", systemImage: "doc.on.doc") {
+                if let item { copyToPasteboard(item.name) }
+            }
+            Button("Löschen", systemImage: "trash", role: .destructive) {
+                if let item {
+                    store.updateOverviewSelection(item.id, for: item.kind)
+                    deletionTarget = item
+                }
             }
         }
-        .help(row.name)
+        .disabled(item == nil)
+    }
+
+    private func openDetails(_ item: InventoryItemSummary) {
+        store.updateOverviewSelection(item.id, for: item.kind)
+        spotlightItemID = item.id
     }
 
     @ViewBuilder
@@ -315,7 +266,7 @@ struct OverviewView: View {
                 .foregroundStyle(.secondary)
         } else {
             Text(value)
-                .lineLimit(2)
+                .lineLimit(1)
                 .truncationMode(.tail)
                 .help(value)
         }
@@ -326,161 +277,66 @@ struct OverviewView: View {
         NSPasteboard.general.setString(value, forType: .string)
     }
 
-    private var stockColumnTitle: String {
-        [
-            L10n.text("Bestand"),
-            L10n.text("Verbaut"),
-            L10n.text("Verfügbar")
-        ]
-        .joined(separator: " / ")
+    private func stockColumn(
+        _ field: InventorySort.Field, value: KeyPath<InventoryItemSummary, Int?>
+    ) -> TableColumn<InventoryItemSummary, InventorySort, some View, Text> {
+        TableColumn(Text(verbatim: field.title(for: .switchSet)), sortUsing: InventorySort(field)) { row in
+            Text(row[keyPath: value] ?? 0, format: .number)
+                .monospacedDigit()
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .width(min: 70, ideal: 82, max: 105)
     }
 
     @ViewBuilder
     private var statusBanner: some View {
         switch store.editorSaveState {
         case let .saved(message):
-            PhaseBanner(title: "Gespeichert", message: message)
+            statusRow(message: message, symbol: "checkmark.circle.fill", color: .green)
         case let .failed(message):
-            HStack {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                Text(message)
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.red.opacity(0.08), in: .rect(cornerRadius: 10))
+            statusRow(message: message, symbol: "exclamationmark.triangle.fill", color: .red)
         case .idle, .saving:
             EmptyView()
         }
     }
 
-    private var countCards: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-            CountCard(title: "Keyboards", value: store.snapshot.counts.boards, systemImage: "keyboard")
-            CountCard(title: "Keycap-Sets", value: store.snapshot.counts.keycapSets, systemImage: "square.grid.3x3.fill")
-            CountCard(title: "Artisans", value: store.snapshot.counts.artisanSets, systemImage: "sparkles")
-            CountCard(title: "Switches", value: store.snapshot.counts.switchSets, systemImage: "switch.2")
-            CountCard(title: "Fotos", value: store.snapshot.counts.photos, systemImage: "photo.on.rectangle.angled")
+    private func statusRow(message: String, symbol: String, color: Color) -> some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .foregroundStyle(color)
+                    .accessibilityHidden(true)
+                Text(message)
+                    .font(.callout)
+                    .lineLimit(2)
+                    .help(message)
+                Spacer()
+                Button("Schließen", systemImage: "xmark") { store.clearEditorStatus() }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 7)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Bestandsübersicht")
-    }
-
-    private var emptyState: some View {
-        ContentUnavailableView {
-            Label(
-                currentFilters.isEmpty(for: store.selectedKind)
-                    ? "Noch keine \(store.selectedKind.displayName)"
-                    : "Keine Treffer",
-                systemImage: store.selectedKind.systemImage
-            )
-        } description: {
-            if currentFilters.isEmpty(for: store.selectedKind) {
-                Text("Erfasse einen neuen Eintrag oder importiere den V1-Bestand.")
-            } else {
-                Text("Passe Suche oder Filter an.")
-            }
-        } actions: {
-            if currentFilters.isEmpty(for: store.selectedKind) {
-                Button("\(store.selectedKind.singularName) erfassen") {
-                    store.prepareNewItem(store.selectedKind)
-                }
-            } else {
-                Button("Filter zurücksetzen") {
-                    store.overviewFiltersByKind[store.selectedKind] = InventoryFilters()
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var actionBar: some View {
-        HStack {
-            Button {
-                store.prepareNewItem(store.selectedKind)
-            } label: {
-                Label("Neu", systemImage: "plus")
-            }
-
-            Button {
-                guard let selection = currentSelection else { return }
-                spotlightItemID = selection
-            } label: {
-                Label("Details", systemImage: "eye")
-            }
-            .disabled(currentSelection == nil)
-
-            Button {
-                guard let selection = currentSelection else { return }
-                store.editItem(kind: store.selectedKind, id: selection)
-            } label: {
-                Label("Bearbeiten", systemImage: "pencil")
-            }
-            .disabled(currentSelection == nil)
-
-            Button(role: .destructive) {
-                isDeleteConfirmationPresented = true
-            } label: {
-                Label("Löschen", systemImage: "trash")
-            }
-            .disabled(currentSelection == nil)
-
-            Spacer()
-
-            Button {
-                isReportExportPresented = true
-            } label: {
-                Label("Bestand exportieren …", systemImage: "square.and.arrow.up")
-            }
-            .disabled(isReportExporting || store.loadState != .loaded)
-        }
-        .padding(10)
-        .background(.bar)
-    }
-
-    private var items: [InventoryItemSummary] {
-        InventoryQuery.items(in: store.snapshot, kind: store.selectedKind)
-    }
-
-    private var filteredItems: [InventoryItemSummary] {
-        InventoryQuery.results(
-            in: store.snapshot,
-            kind: store.selectedKind,
-            filters: currentFilters,
-            sort: currentSort
-        )
-    }
-
-    private func normalizeSort() {
-        if !InventorySort.available(for: store.selectedKind).contains(currentSort) {
-            store.overviewSortsByKind[store.selectedKind] = .name
-        }
-    }
-
-    private var currentFilters: InventoryFilters {
-        store.overviewFiltersByKind[store.selectedKind, default: InventoryFilters()]
-    }
-
-    private var currentSort: InventorySort {
-        store.overviewSortsByKind[store.selectedKind, default: .name]
-    }
-
-    private var filtersBinding: Binding<InventoryFilters> {
-        Binding(
-            get: { currentFilters },
-            set: { store.overviewFiltersByKind[store.selectedKind] = $0 }
-        )
-    }
-
-    private var sortBinding: Binding<InventorySort> {
-        Binding(
-            get: { currentSort },
-            set: { store.overviewSortsByKind[store.selectedKind] = $0 }
-        )
     }
 
     private var currentSelection: String? {
         store.overviewSelectionByKind[store.selectedKind]
+    }
+
+    private var tableSortOrder: Binding<[InventorySort]> {
+        let kind = store.selectedKind
+        return Binding(
+            get: {
+                let sort = store.overviewSortsByKind[kind, default: .name]
+                return sort.field == .updatedAt ? [] : [sort]
+            },
+            set: { descriptors in
+                guard store.selectedKind == kind, let first = descriptors.first else { return }
+                store.collectionSort = first
+            }
+        )
     }
 
     private var selectionBinding: Binding<String?> {
@@ -497,17 +353,6 @@ struct OverviewView: View {
         return store.overviewRestoreRequest
     }
 
-    private var restoredRowIndex: Int? {
-        guard let itemID = activeRestoreRequest?.itemID else { return nil }
-        return filteredItems.firstIndex { $0.id == itemID }
-    }
-
-    private var isReportExporting: Bool {
-        if case .exporting = store.reportExportState {
-            return true
-        }
-        return false
-    }
 }
 
 @MainActor
@@ -692,28 +537,5 @@ final class TableLocatorView: NSView {
     override func layout() {
         super.layout()
         onResolve?()
-    }
-}
-
-private struct CountCard: View {
-    var title: String
-    var value: Int
-    var systemImage: String
-
-    var body: some View {
-        GroupBox {
-            HStack(alignment: .firstTextBaseline) {
-                Image(systemName: systemImage)
-                    .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
-                Spacer()
-                Text(value, format: .number)
-                    .font(.system(size: 28, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-            }
-            Text(title)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .foregroundStyle(.secondary)
-        }
     }
 }

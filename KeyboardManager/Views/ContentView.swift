@@ -9,42 +9,52 @@ struct ContentView: View {
     let shouldCheckForUpdates: Bool
     @State private var didInitializeLanguage = false
     @State private var isUpdateAlertPresented = false
+    @State private var loadAttempt = 0
 
     var body: some View {
         NavigationSplitView {
             SidebarView(store: store)
-                .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 300)
+                .navigationSplitViewColumnWidth(min: 170, ideal: 208, max: 280)
         } detail: {
             VStack(spacing: 0) {
                 detailView
+                    .id(store.backupRestoreRevision)
                 reportExportStatus
                 backupExportStatus
             }
-                .navigationTitle(store.route.title)
-                .toolbar {
-                    ToolbarItemGroup(placement: .primaryAction) {
+            .navigationTitle(store.route.title)
+            .toolbar {
+                if store.route == .overview || store.route == .gallery {
+                    ToolbarItem(placement: .primaryAction) {
                         Button {
-                            chooseBackupDestination()
+                            store.prepareNewItem(store.selectedKind)
                         } label: {
-                            Label("ZIP-Backup", systemImage: "externaldrive.badge.plus")
+                            Label(store.selectedKind.newItemTitle, systemImage: "plus")
                         }
-                        .help("V1-kompatibles ZIP-Backup erstellen")
-                        .disabled(isBackupExporting || store.loadState != .loaded)
-
-                        Button {
-                            store.showMigration()
-                        } label: {
-                            Label("V1-Migration", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
-                        }
-
-                        Button {
-                            store.prepareNewItem(.board)
-                        } label: {
-                            Label("Neues Board", systemImage: "plus")
-                        }
+                        .accessibilityLabel(Text(store.selectedKind.newItemTitle))
+                        .disabled(!store.canStartEditor)
+                        .help(store.selectedKind.newItemTitle)
+                        .accessibilityIdentifier("collection.new")
                     }
                 }
+            }
         }
+        .sheet(isPresented: $store.isReportExportPresented) {
+            InventoryReportExportView(currentKind: store.selectedKind) { options in
+                let context = InventoryReportContext(
+                    currentKind: store.selectedKind,
+                    filtersByKind: store.overviewFiltersByKind,
+                    sortsByKind: store.overviewSortsByKind
+                )
+                guard let destination = InventoryReportSavePanel.chooseDestination(for: options.format) else { return }
+                Task { await store.exportReport(context: context, options: options, to: destination) }
+            }
+        }
+        .sheet(isPresented: $store.isBackupRestorePresented) {
+            BackupRestoreView(store: store)
+                .interactiveDismissDisabled()
+        }
+        .focusedSceneValue(\.inventoryWorkspace, store)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Keyboard Manager Hauptfenster")
         .contextMenu {
@@ -79,8 +89,9 @@ struct ContentView: View {
             }
             .disabled(!canPerformResponderAction(#selector(NSText.selectAll(_:))))
         }
-        .task {
+        .task(id: loadAttempt) {
             await store.load()
+            guard store.loadState == .loaded else { return }
             if shouldAdoptStoredLanguage {
                 preferredLanguage = AppLanguage.normalized(
                     store.snapshot.metadata.preferredLanguage
@@ -167,12 +178,14 @@ struct ContentView: View {
             statusBar {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
-                Text(
-                    "Bericht gespeichert: \(result.destinationURL.lastPathComponent) · "
-                    + "\(result.itemCount) Einträge · "
-                    + result.byteCount.formatted(.byteCount(style: .file))
-                )
+                Text(L10n.text("Bericht gespeichert: %@ · %@", arguments: result.destinationURL.lastPathComponent,
+                               result.byteCount.formatted(.byteCount(style: .file))))
+                Text(result.itemCount == 1 ? L10n.text("1 Eintrag") : L10n.text("%lld Einträge", arguments: result.itemCount))
+                    .foregroundStyle(.secondary)
                 Spacer()
+                Button("Im Finder zeigen") {
+                    NSWorkspace.shared.activateFileViewerSelecting([result.destinationURL])
+                }
                 Button("Schließen") {
                     store.clearReportExportStatus()
                 }
@@ -207,14 +220,17 @@ struct ContentView: View {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
                 Text(
-                    "Backup gespeichert: \(result.destinationURL.lastPathComponent) · "
-                    + result.byteCount.formatted(.byteCount(style: .file))
+                    L10n.text("Backup gespeichert: %@ · %@", arguments: result.destinationURL.lastPathComponent,
+                              result.byteCount.formatted(.byteCount(style: .file)))
                 )
                 if result.transcodedHEICPhotoCount > 0 {
                     Text("· \(result.transcodedHEICPhotoCount) HEIC als JPEG kopiert")
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button("Im Finder zeigen") {
+                    NSWorkspace.shared.activateFileViewerSelecting([result.destinationURL])
+                }
                 Button("Schließen") {
                     store.clearBackupExportStatus()
                 }
@@ -247,22 +263,6 @@ struct ContentView: View {
             }
     }
 
-    private var isBackupExporting: Bool {
-        if case .exporting = store.backupExportState {
-            return true
-        }
-        return false
-    }
-
-    private func chooseBackupDestination() {
-        guard let destinationURL = BackupSavePanel.chooseDestination() else {
-            return
-        }
-        Task {
-            await store.exportBackup(to: destinationURL)
-        }
-    }
-
     private func performResponderAction(_ action: Selector) {
         NSApp.sendAction(action, to: nil, from: nil)
     }
@@ -273,15 +273,31 @@ struct ContentView: View {
 
     @ViewBuilder
     private var detailView: some View {
-        switch store.route {
-        case .overview:
-            OverviewView(store: store)
-        case .capture:
-            CaptureView(store: store)
-        case .gallery:
-            GalleryView(store: store)
-        case .migration:
-            MigrationView(store: store)
+        switch store.loadState {
+        case .idle, .loading:
+            ProgressView("Sammlung wird geöffnet …")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case let .failed(message):
+            ContentUnavailableView {
+                Label("Sammlung konnte nicht geöffnet werden", systemImage: "externaldrive.badge.exclamationmark")
+            } description: {
+                Text(message)
+            } actions: {
+                HStack {
+                    Button("Erneut versuchen") {
+                        store.loadState = .idle
+                        loadAttempt += 1
+                    }
+                    Button("Sicherung wiederherstellen …") { store.requestBackupRestore() }
+                        .disabled(!store.canRestoreBackup)
+                }
+            }
+        case .loaded:
+            switch store.route {
+            case .overview: OverviewView(store: store)
+            case .capture: CaptureView(store: store)
+            case .gallery: GalleryView(store: store)
+            }
         }
     }
 }

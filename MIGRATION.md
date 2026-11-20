@@ -1,5 +1,7 @@
 # Keyboard Manager V2 – Migration von V1
 
+> Historischer Projektstand bis Version 1.1.2. Die überarbeitete App verwaltet den bestehenden lokalen Bestand direkt. Die aktuelle Bedienung beschreibt die [Produktdokumentation](documentation/Keyboard_Manager_V2_Fachliche_Beschreibung.md).
+
 Stand: 23. Juli 2026 · ZIP-Schema 3–6, Legacy-JSON und direkte V1-SQLite-Quelle produktiv
 
 ## Sicherheitsziel

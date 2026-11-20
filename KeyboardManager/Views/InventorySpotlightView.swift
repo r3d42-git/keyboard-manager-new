@@ -1,12 +1,24 @@
 import AppKit
 import SwiftUI
 
+private struct SpotlightRelation: Identifiable {
+    let kind: InventoryItemKind
+    let id: String
+    let title: String
+}
+
+private struct SpotlightLinkedDetail {
+    let item: InventoryItemSummary
+    let boardPhotoID: String?
+}
+
 struct InventorySpotlightView: View {
     @Bindable var store: InventoryStore
     var items: [InventoryItemSummary]
 
     @Environment(\.dismiss) private var dismiss
     @State private var currentID: String
+    @State private var linkedDetail: SpotlightLinkedDetail?
     @State private var selectedPhotoID: String?
     @State private var isDeleteConfirmationPresented = false
     @State private var largePhotoWindow = InventoryLargePhotoWindowController()
@@ -31,12 +43,13 @@ struct InventorySpotlightView: View {
             if let item = currentItem {
                 HStack(spacing: 0) {
                     photoArea(for: item)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                     Divider()
 
                     detailInspector(for: item)
-                        .frame(width: 310)
+                        .frame(width: 282)
+                        .id(item.id)
+                        .id(item.kind)
                 }
             } else {
                 ContentUnavailableView(
@@ -45,7 +58,7 @@ struct InventorySpotlightView: View {
                 )
             }
         }
-        .frame(minWidth: 900, minHeight: 640)
+        .frame(minWidth: 760, idealWidth: 960, minHeight: 510, idealHeight: 620)
         .background {
             SpotlightWindowReference { window in
                 largePhotoWindow.parentWindow = window
@@ -78,29 +91,37 @@ struct InventorySpotlightView: View {
     }
 
     private var navigationBar: some View {
-        HStack(spacing: 10) {
-            Button {
-                showPreviousItemOrPhoto()
-            } label: {
-                Label("Vorheriger Eintrag", systemImage: "chevron.left")
-                    .labelStyle(.iconOnly)
-            }
-            .keyboardShortcut(.leftArrow, modifiers: [])
-            .disabled(items.count < 2)
+        HStack(spacing: 12) {
+            if linkedDetail != nil {
+                Button("Zurück zum Keyboard", systemImage: "chevron.backward", action: returnToBoard)
+                    .keyboardShortcut("[", modifiers: .command)
+                    .accessibilityIdentifier("spotlight-back-to-board")
+            } else {
+                HStack(spacing: 4) {
+                    Button {
+                        stepItemOrLargePhoto(by: -1)
+                    } label: {
+                        Label("Vorheriger Eintrag", systemImage: "chevron.left")
+                    }
+                    .keyboardShortcut(.leftArrow, modifiers: [])
+                    .help("Vorheriger Eintrag")
 
-            Button {
-                showNextItemOrPhoto()
-            } label: {
-                Label("Nächster Eintrag", systemImage: "chevron.right")
-                    .labelStyle(.iconOnly)
-            }
-            .keyboardShortcut(.rightArrow, modifiers: [])
-            .disabled(items.count < 2)
+                    Button {
+                        stepItemOrLargePhoto(by: 1)
+                    } label: {
+                        Label("Nächster Eintrag", systemImage: "chevron.right")
+                    }
+                    .keyboardShortcut(.rightArrow, modifiers: [])
+                    .help("Nächster Eintrag")
+                }
+                .labelStyle(.iconOnly)
+                .disabled(items.count < 2)
 
-            Text(positionText)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+                Text(positionText)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
 
             Spacer()
 
@@ -108,136 +129,182 @@ struct InventorySpotlightView: View {
                 Button("Groß ansehen", systemImage: "arrow.up.left.and.arrow.down.right") {
                     showLargePhoto(for: item)
                 }
+                .labelStyle(.iconOnly)
+                .help("Foto groß ansehen")
                 .disabled(selectedPhoto(for: item) == nil)
 
                 Button("Bearbeiten", systemImage: "pencil") {
-                    dismiss()
-                    store.editItem(kind: item.kind, id: item.id)
+                    edit(item)
                 }
 
                 Button("Löschen", systemImage: "trash", role: .destructive) {
                     isDeleteConfirmationPresented = true
                 }
+                .labelStyle(.iconOnly)
+                .help("Löschen")
             }
 
             Button("Schließen", systemImage: "xmark") {
                 dismiss()
             }
+            .labelStyle(.iconOnly)
+            .help("Schließen")
             .keyboardShortcut(.cancelAction)
         }
-        .padding(12)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
         .background(.bar)
     }
 
     private func photoArea(for item: InventoryItemSummary) -> some View {
-        VStack(spacing: 14) {
+        let photo = selectedPhoto(for: item)
+        return VStack(spacing: 12) {
             Group {
-                if selectedPhoto(for: item) == nil, item.externalImageCount > 0 {
-                    ContentUnavailableView {
-                        Label("Externes Importbild", systemImage: "icloud.and.arrow.down")
-                    } description: {
-                        Text(
-                            "\(item.externalImageCount) externe \(item.externalImageCount == 1 ? "Bildadresse" : "Bildadressen") "
-                            + "werden aus Datenschutzgründen nicht automatisch geladen."
-                        )
-                    } actions: {
-                        Button("Zum lokalen Übernehmen bearbeiten") {
-                            dismiss()
-                            store.editItem(kind: item.kind, id: item.id)
-                        }
-                    }
-                } else {
+                if let photo {
                     Button {
                         showLargePhoto(for: item)
                     } label: {
-                        ManagedPhotoView(
-                            store: store,
-                            record: selectedPhoto(for: item),
-                            purpose: .full
-                        )
+                        ManagedPhotoView(store: store, record: photo, purpose: .full)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(selectedPhoto(for: item) == nil)
                     .accessibilityLabel("Foto in Großansicht öffnen")
                     .help("Foto groß ansehen")
+                } else if item.externalImageCount > 0 {
+                    ContentUnavailableView {
+                        Label("Externes Importbild", systemImage: "icloud.and.arrow.down")
+                    } description: {
+                        Text("Externe Bildadressen werden aus Datenschutzgründen nicht automatisch geladen.")
+                    } actions: {
+                        Button("Zum lokalen Übernehmen bearbeiten") {
+                            edit(item)
+                        }
+                    }
+                } else {
+                    ContentUnavailableView("Kein Foto", systemImage: "photo")
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.black.opacity(0.9))
+            .background(.quaternary.opacity(0.55))
             .clipShape(.rect(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(.quaternary)
+                    .allowsHitTesting(false)
+            }
 
-            if !item.photoIDs.isEmpty {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 10) {
-                        ForEach(item.photoIDs, id: \.self) { photoID in
-                            Button {
-                                selectedPhotoID = photoID
-                            } label: {
-                                ManagedPhotoView(
-                                    store: store,
-                                    record: store.photoRecord(id: photoID),
-                                    purpose: .thumbnail
-                                )
-                                .frame(width: 86, height: 64)
-                                .clipShape(.rect(cornerRadius: 7))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 7)
-                                        .stroke(
-                                            photoID == selectedPhotoID ? Color.accentColor : .clear,
-                                            lineWidth: 3
-                                        )
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Foto \(photoID == item.mainPhotoID ? "– Hauptfoto" : "")")
-                        }
-                    }
-                    .padding(.horizontal, 2)
-                }
-                .scrollIndicators(.hidden)
-                .frame(height: 68)
+            if item.photoCount > 1 {
+                photoNavigation(for: item)
+                    .id(item.id)
             }
         }
-        .padding(18)
+        .padding(16)
+    }
+
+    private func photoNavigation(for item: InventoryItemSummary) -> some View {
+        let activePhotoID = activePhotoID(for: item)
+        let currentIndex = item.photoIDs.firstIndex { $0 == activePhotoID } ?? 0
+
+        return HStack(spacing: 12) {
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: 8) {
+                        ForEach(Array(item.photoIDs.enumerated()), id: \.element) { index, photoID in
+                            thumbnail(
+                                for: photoID,
+                                index: index,
+                                isMain: photoID == item.mainPhotoID,
+                                isSelected: photoID == activePhotoID
+                            )
+                            .id(photoID)
+                        }
+                    }
+                    .padding(2)
+                }
+                .scrollIndicators(.hidden)
+                .frame(height: 58)
+                .onChange(of: activePhotoID, initial: true) { _, id in
+                    if let id {
+                        proxy.scrollTo(id, anchor: .center)
+                    }
+                }
+            }
+
+            InventoryPhotoStepper(
+                index: currentIndex,
+                count: item.photoCount,
+                step: { offset in
+                    let index = currentIndex + offset
+                    guard item.photoIDs.indices.contains(index) else { return }
+                    selectedPhotoID = item.photoIDs[index]
+                }
+            )
+        }
+    }
+
+    private func thumbnail(for photoID: String, index: Int, isMain: Bool, isSelected: Bool) -> some View {
+        let title = isMain
+            ? L10n.text("Foto %lld (Hauptfoto)", arguments: index + 1)
+            : L10n.text("Foto %lld", arguments: index + 1)
+
+        return Button {
+            selectedPhotoID = photoID
+        } label: {
+            ManagedPhotoView(
+                store: store,
+                record: store.photoRecord(id: photoID),
+                purpose: .thumbnail,
+                showsCompactPlaceholder: true
+            )
+            .frame(width: 72, height: 52)
+            .background(.quaternary)
+            .clipShape(.rect(cornerRadius: 7))
+            .overlay {
+                RoundedRectangle(cornerRadius: 7)
+                    .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityIdentifier("spotlight-photo-\(photoID)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .help(title)
     }
 
     private func detailInspector(for item: InventoryItemSummary) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Label(item.kind.singularName, systemImage: item.kind.systemImage)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                Text(item.name)
-                    .font(.title2.bold())
-                    .textSelection(.enabled)
-
-                if !item.secondaryDetail.isEmpty {
-                    Text(item.secondaryDetail)
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(item.kind.singularName, systemImage: item.kind.systemImage)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
+
+                    Text(item.name)
+                        .font(.title2.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("spotlight-title")
                 }
 
                 Divider()
 
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
-                    ForEach(visibleMetadata(for: item), id: \.self) { field in
-                        GridRow {
-                            Text(field.label)
-                                .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(item.metadata.filter { $0.relationshipKind == nil && !$0.value.isEmpty }, id: \.self) { field in
+                        detailRow(Text(field.label)) {
                             Text(field.value)
                                 .textSelection(.enabled)
                         }
                     }
-                    GridRow {
-                        Text("Lokale Fotos")
-                            .foregroundStyle(.secondary)
+                    if item.kind == .board, let board = store.snapshot.boards.first(where: { $0.id == item.id }) {
+                        boardRelationships(for: board)
+                    }
+                    detailRow(Text("Lokale Fotos")) {
                         Text(item.photoCount, format: .number)
                             .monospacedDigit()
                     }
                     if item.externalImageCount > 0 {
-                        GridRow {
-                            Text("Externe Importbilder")
-                                .foregroundStyle(.secondary)
+                        detailRow(Text("Externe Importbilder")) {
                             Text(item.externalImageCount, format: .number)
                                 .monospacedDigit()
                         }
@@ -246,10 +313,14 @@ struct InventorySpotlightView: View {
 
                 if !item.notes.isEmpty {
                     Divider()
-                    Text("Notizen")
-                        .font(.headline)
-                    Text(item.notes)
-                        .textSelection(.enabled)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Notizen")
+                            .font(.headline)
+                            .accessibilityAddTraits(.isHeader)
+                        Text(item.notes)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
                 }
 
                 if let url = validatedHTTPSURL(item.sourceURL) {
@@ -257,6 +328,7 @@ struct InventorySpotlightView: View {
                     Button("Quelle im Browser öffnen", systemImage: "safari") {
                         NSWorkspace.shared.open(url)
                     }
+                    .buttonStyle(.link)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -264,8 +336,20 @@ struct InventorySpotlightView: View {
         }
     }
 
+    private func detailRow<Content: View>(_ label: Text, @ViewBuilder value: () -> Content) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            label
+                .foregroundStyle(.secondary)
+                .frame(width: 94, alignment: .leading)
+            value()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .combine)
+    }
+
     private var currentItem: InventoryItemSummary? {
-        items.first { $0.id == currentID }
+        linkedDetail?.item ?? items.first { $0.id == currentID }
     }
 
     private var currentIndex: Int? {
@@ -284,32 +368,87 @@ struct InventorySpotlightView: View {
     }
 
     private func selectedPhoto(for item: InventoryItemSummary) -> PhotoRecord? {
-        let id = selectedPhotoID ?? item.mainPhotoID ?? item.photoIDs.first
-        return store.photoRecord(id: id)
+        store.photoRecord(id: activePhotoID(for: item))
     }
 
-    private func visibleMetadata(for item: InventoryItemSummary) -> [InventoryMetadataValue] {
-        item.metadata.filter { !$0.value.isEmpty }
+    private func activePhotoID(for item: InventoryItemSummary) -> String? {
+        if let selectedPhotoID, item.photoIDs.contains(selectedPhotoID) {
+            return selectedPhotoID
+        }
+        return item.mainPhotoID ?? item.photoIDs.first
     }
 
-    private func showPrevious() {
-        guard let currentIndex, !items.isEmpty else { return }
-        select(items[(currentIndex - 1 + items.count) % items.count])
+    @ViewBuilder
+    private func boardRelationships(for board: Board) -> some View {
+        let snapshot = store.snapshot
+        let keycapsByID = Dictionary(uniqueKeysWithValues: snapshot.keycapSets.map { ($0.id, $0.name) })
+        let keycaps = board.keycapSetIDs.compactMap { id in
+            keycapsByID[id].map { SpotlightRelation(kind: .keycapSet, id: id, title: $0) }
+        }
+        let artisans = snapshot.artisanSets.filter { $0.mountedBoardID == board.id }.map {
+            SpotlightRelation(kind: .artisanSet, id: $0.id, title: $0.name)
+        }
+        let switchesByID = Dictionary(uniqueKeysWithValues: snapshot.switchSets.map { ($0.id, $0.name) })
+        let switches = snapshot.switchInstallations.filter { $0.boardID == board.id }.compactMap { installation in
+            switchesByID[installation.switchSetID].map { name in
+                SpotlightRelation(
+                    kind: .switchSet,
+                    id: installation.switchSetID,
+                    title: L10n.text("%@ · %lld Stück", arguments: name, installation.quantity)
+                )
+            }
+        }
+
+        relationshipGroup("Keycaps", links: keycaps, fallback: board.legacyKeycapsName)
+        relationshipGroup("Artisans", links: artisans)
+        relationshipGroup("Switches", links: switches, fallback: board.legacySwitchesName)
     }
 
-    private func showPreviousItemOrPhoto() {
-        guard !largePhotoWindow.stepPhotoIfPresented(by: -1) else { return }
-        showPrevious()
+    @ViewBuilder
+    private func relationshipGroup(_ label: LocalizedStringKey, links: [SpotlightRelation], fallback: String = "") -> some View {
+        if !links.isEmpty {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(label)
+                    .foregroundStyle(.secondary)
+                ForEach(links) { link in
+                    Button {
+                        openRelatedItem(link)
+                    } label: {
+                        Text(link.title)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .buttonStyle(.link)
+                    .accessibilityIdentifier("spotlight-related-\(link.kind.rawValue)-\(link.id)")
+                }
+            }
+        } else if !fallback.isEmpty {
+            detailRow(Text(label)) {
+                Text(fallback)
+                    .textSelection(.enabled)
+            }
+        }
     }
 
-    private func showNext() {
-        guard let currentIndex, !items.isEmpty else { return }
-        select(items[(currentIndex + 1) % items.count])
+    private func openRelatedItem(_ link: SpotlightRelation) {
+        guard let board = currentItem, board.kind == .board,
+              let item = InventoryQuery.items(in: store.snapshot, kind: link.kind).first(where: { $0.id == link.id }) else {
+            return
+        }
+        largePhotoWindow.close()
+        linkedDetail = SpotlightLinkedDetail(item: item, boardPhotoID: activePhotoID(for: board))
+        selectedPhotoID = item.mainPhotoID ?? item.photoIDs.first
     }
 
-    private func showNextItemOrPhoto() {
-        guard !largePhotoWindow.stepPhotoIfPresented(by: 1) else { return }
-        showNext()
+    private func returnToBoard() {
+        largePhotoWindow.close()
+        selectedPhotoID = linkedDetail?.boardPhotoID
+        linkedDetail = nil
+    }
+
+    private func stepItemOrLargePhoto(by offset: Int) {
+        guard !largePhotoWindow.stepPhotoIfPresented(by: offset), linkedDetail == nil, let currentIndex else { return }
+        select(items[(currentIndex + offset + items.count) % items.count])
     }
 
     private func select(_ item: InventoryItemSummary) {
@@ -322,9 +461,14 @@ struct InventorySpotlightView: View {
         largePhotoWindow.present(
             store: store,
             item: item,
-            selectedPhotoID: selection.wrappedValue,
+            selectedPhotoID: activePhotoID(for: item),
             onPhotoSelection: { selection.wrappedValue = $0 }
         )
+    }
+
+    private func edit(_ item: InventoryItemSummary) {
+        dismiss()
+        store.editItem(kind: item.kind, id: item.id)
     }
 
     private func validatedHTTPSURL(_ value: String) -> URL? {
@@ -403,6 +547,7 @@ struct ManagedPhotoView: View {
         case .full:
             data = await store.photoData(for: record)
         }
+        guard !Task.isCancelled else { return }
         image = data.flatMap(NSImage.init(data:))
         isLoading = false
     }

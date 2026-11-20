@@ -5,8 +5,9 @@ struct KeyboardManagerApp: App {
     @State private var store: InventoryStore
     @State private var updateController = AppUpdateController()
     @AppStorage(AppLanguage.preferenceKey) private var preferredLanguage = AppLanguage.german.rawValue
-    @AppStorage("followSystemAppearance") private var followSystemAppearance = true
+    @AppStorage("collectionAppearance") private var appearance = CollectionAppearance.legacyPreference
     private let shouldAdoptStoredLanguage: Bool
+    private let viewPreferences: UserDefaults
 
     init() {
         shouldAdoptStoredLanguage = UserDefaults.standard.object(
@@ -15,44 +16,27 @@ struct KeyboardManagerApp: App {
         let environment = ProcessInfo.processInfo.environment
         if let testRoot = environment["KEYBOARD_MANAGER_UI_TEST_ROOT"], !testRoot.isEmpty {
             let rootURL = URL(fileURLWithPath: testRoot, isDirectory: true)
-            let databaseURL = rootURL
-                .appendingPathComponent("inventory.sqlite")
-            let processDetector = V1ProcessDetector(lookup: { false })
-            let discoveryService = V1SourceDiscoveryService(
-                applicationSupportRoots: {
-                    [
-                        rootURL.appendingPathComponent(
-                            "V1 Application Support",
-                            isDirectory: true
-                        )
-                    ]
-                },
-                processDetector: processDetector
-            )
+            let storage = InventoryStorageLayout(rootURL: rootURL)
+            viewPreferences = UserDefaults(suiteName: rootURL.lastPathComponent) ?? .standard
             _store = State(
                 initialValue: InventoryStore(
-                    repository: SQLiteInventoryRepository(databaseURL: databaseURL),
-                    migrationService: V1MigrationService(
-                        discoveryService: discoveryService
-                    ),
-                    migrationCommitService: MigrationCommitService(
-                        layout: MigrationStorageLayout(
-                            rootURL: rootURL.appendingPathComponent(
-                                "Migration",
-                                isDirectory: true
-                            )
-                        ),
-                        v1ProcessDetector: processDetector
-                    )
+                    repository: SQLiteInventoryRepository(databaseURL: storage.currentDatabaseURL),
+                    backupExportService: BackupExportService(layout: storage),
+                    backupRestoreService: BackupRestoreService(layout: storage),
+                    reportExportService: InventoryReportExportService(layout: storage),
+                    photoService: PhotoImportService(layout: storage),
+                    thumbnailService: ThumbnailService(layout: storage),
+                    preferences: viewPreferences
                 )
             )
         } else {
-            _store = State(initialValue: InventoryStore())
+            viewPreferences = .standard
+            _store = State(initialValue: InventoryStore(preferences: viewPreferences))
         }
     }
 
     var body: some Scene {
-        WindowGroup("Keyboard Manager") {
+        Window("Keyboard Manager", id: "collection") {
             ContentView(
                 store: store,
                 updateController: updateController,
@@ -62,50 +46,92 @@ struct KeyboardManagerApp: App {
                     "KEYBOARD_MANAGER_UI_TEST_ROOT"
                 ] == nil
             )
-                .frame(minWidth: 980, minHeight: 640)
-                .preferredColorScheme(followSystemAppearance ? nil : .light)
+                .frame(minWidth: 900, minHeight: 600)
+                .defaultAppStorage(viewPreferences)
+                .preferredColorScheme(appearance.colorScheme)
                 .environment(
                     \.locale,
                     AppLanguage.normalized(preferredLanguage).locale
                 )
         }
-        .defaultSize(width: 1600, height: 900)
+        .defaultSize(width: 1220, height: 780)
         .windowResizability(.contentMinSize)
+        .windowToolbarStyle(.unifiedCompact)
         .commands {
-            CommandMenu("Sammlung") {
-                Button("Neues Board") {
-                    store.prepareNewItem(.board)
-                }
-                .keyboardShortcut("n", modifiers: .command)
-
-                Menu("Neuer Eintrag") {
-                    ForEach(InventoryItemKind.allCases) { kind in
-                        Button(kind.singularName) {
-                            store.prepareNewItem(kind)
-                        }
-                    }
-                }
-
-                Divider()
-
-                Button("V1-Migration öffnen") {
-                    store.showMigration()
-                }
-                .keyboardShortcut("m", modifiers: [.command, .shift])
-            }
+            SidebarCommands()
+            CollectionCommands()
         }
 
         Settings {
             SettingsView(
                 store: store,
                 updateController: updateController,
-                preferredLanguage: $preferredLanguage
+                preferredLanguage: $preferredLanguage,
+                appearance: $appearance
             )
-            .preferredColorScheme(followSystemAppearance ? nil : .light)
+            .preferredColorScheme(appearance.colorScheme)
             .environment(
                 \.locale,
                 AppLanguage.normalized(preferredLanguage).locale
             )
         }
+    }
+}
+
+private struct CollectionCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+    @FocusedValue(\.inventoryWorkspace) private var store
+
+    var body: some Commands {
+        CommandGroup(after: .windowArrangement) {
+            Button(L10n.text("Sammlungsfenster zeigen")) { openWindow(id: "collection") }
+                .keyboardShortcut("0")
+        }
+
+        CommandGroup(replacing: .newItem) {
+            Button(store?.selectedKind.newItemTitle ?? L10n.text("Neues Board")) {
+                if let store { store.prepareNewItem(store.selectedKind) }
+            }
+            .keyboardShortcut("n")
+            .disabled(store?.canStartEditor != true)
+
+            Menu(L10n.text("Neuer Eintrag")) {
+                ForEach(InventoryItemKind.allCases) { kind in
+                    Button(kind.newItemTitle) { store?.prepareNewItem(kind) }
+                }
+            }
+            .disabled(store?.canStartEditor != true)
+        }
+
+        CommandMenu(L10n.text("Sammlung")) {
+            Group {
+                Button(AppRoute.overview.title) { store?.requestRoute(.overview) }
+                    .keyboardShortcut("1")
+                Button(AppRoute.gallery.title) { store?.requestRoute(.gallery) }
+                    .keyboardShortcut("2")
+                Button(AppRoute.capture.title) { store?.requestRoute(.capture) }
+                    .keyboardShortcut("3")
+                    .disabled(store?.canStartEditor != true)
+                Divider()
+                Button(L10n.text("ZIP-Backup erstellen …")) { store?.chooseBackupDestination() }
+                    .disabled(store?.canExportBackup != true)
+                Button(L10n.text("Sicherung wiederherstellen …")) { store?.requestBackupRestore() }
+                    .disabled(store?.canRestoreBackup != true)
+                Button(L10n.text("Bestand exportieren …")) { store?.isReportExportPresented = true }
+                    .disabled(store?.canExportReport != true)
+            }
+            .disabled(store == nil || store?.editorSaveState == .saving)
+        }
+    }
+}
+
+private struct InventoryWorkspaceKey: FocusedValueKey {
+    typealias Value = InventoryStore
+}
+
+extension FocusedValues {
+    var inventoryWorkspace: InventoryStore? {
+        get { self[InventoryWorkspaceKey.self] }
+        set { self[InventoryWorkspaceKey.self] = newValue }
     }
 }

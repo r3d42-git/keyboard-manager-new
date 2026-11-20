@@ -106,8 +106,8 @@ struct InventoryEditingService: Sendable {
             snapshot.keycapSets.removeAll { $0.id == id }
             didRemove = snapshot.keycapSets.count != oldCount
             snapshot.boards.indices.forEach { index in
-                if snapshot.boards[index].keycapSetID == id {
-                    snapshot.boards[index].keycapSetID = nil
+                if snapshot.boards[index].keycapSetIDs.contains(id) {
+                    snapshot.boards[index].keycapSetIDs.removeAll { $0 == id }
                     snapshot.boards[index].updatedAt = now
                 }
             }
@@ -141,7 +141,7 @@ struct InventoryEditingService: Sendable {
         let newInstallations = Dictionary(grouping: snapshot.switchInstallations, by: \.boardID)
         for index in snapshot.boards.indices {
             let board = snapshot.boards[index]
-            if oldBoards[board.id]?.keycapSetID != board.keycapSetID {
+            if (oldBoards[board.id]?.keycapSetIDs ?? []) != board.keycapSetIDs {
                 snapshot.boards[index].legacyKeycapsName = ""
                 snapshot.boards[index].updatedAt = now
             }
@@ -171,8 +171,8 @@ struct InventoryEditingService: Sendable {
            !snapshot.boards.contains(where: { $0.id == boardID }) {
             throw InventoryEditingError.missingRelation(boardID)
         }
-        if let keycapSetID = draft.keycapSetID,
-           !snapshot.keycapSets.contains(where: { $0.id == keycapSetID }) {
+        let keycapIDs = Set(snapshot.keycapSets.map(\.id))
+        if let keycapSetID = draft.keycapSetIDs.first(where: { !keycapIDs.contains($0) }) {
             throw InventoryEditingError.missingRelation(keycapSetID)
         }
         let validPhotoIDs = Set(draft.photoIDs).union(newPhotos.map(\.id))
@@ -199,15 +199,16 @@ struct InventoryEditingService: Sendable {
                 guard let switchSet = snapshot.switchSets.first(where: { $0.id == switchID }) else {
                     continue
                 }
-                let installedElsewhere = snapshot.switchInstallations
+                let installedElsewhere = snapshot.switchInstallations.lazy
                     .filter { $0.switchSetID == switchID && $0.boardID != draft.id }
-                    .reduce(0) { $0 + $1.quantity }
-                if installedElsewhere + quantity > switchSet.quantity {
+                    .map(\.quantity)
+                let installed = try Self.totalInstalled(installedElsewhere, startingAt: quantity)
+                if installed > switchSet.quantity {
                     throw InventoryEditingError.invalidQuantity(
                         L10n.text(
                             "Für „%@“ wären %lld von %lld Switches verbaut.",
                             arguments: switchSet.name,
-                            installedElsewhere + quantity,
+                            installed,
                             switchSet.quantity
                         )
                     )
@@ -218,7 +219,7 @@ struct InventoryEditingService: Sendable {
                 !snapshot.boards.contains(where: { $0.id == boardID }) {
                 throw InventoryEditingError.missingRelation(boardID)
             }
-            let installed = draft.installations.values.reduce(0, +)
+            let installed = try Self.totalInstalled(draft.installations.values)
             if installed > draft.quantity {
                 throw InventoryEditingError.invalidQuantity(
                     L10n.text(
@@ -233,7 +234,19 @@ struct InventoryEditingService: Sendable {
         }
     }
 
+    static func totalInstalled(_ quantities: some Sequence<Int>, startingAt initial: Int = 0) throws -> Int {
+        try quantities.reduce(initial) { subtotal, quantity in
+            let (sum, overflow) = subtotal.addingReportingOverflow(quantity)
+            guard !overflow else {
+                throw InventoryEditingError.invalidQuantity(L10n.text("Die Summe der Installationsmengen ist zu groß."))
+            }
+            return sum
+        }
+    }
+
     private func saveBoard(_ draft: InventoryDraft, in snapshot: inout InventorySnapshot, now: Date) {
+        var selected = Set<String>()
+        let keycapSetIDs = draft.keycapSetIDs.filter { selected.insert($0).inserted }
         let board = Board(
             id: draft.id,
             name: draft.normalizedName,
@@ -244,7 +257,7 @@ struct InventoryEditingService: Sendable {
             stabilizers: draft.stabilizers.trimmed,
             remark: draft.notes,
             legacyKeycapsName: draft.legacyKeycapsName,
-            keycapSetID: draft.keycapSetID,
+            keycapSetIDs: keycapSetIDs,
             legacySwitchesName: draft.legacySwitchesName,
             photoIDs: draft.photoIDs,
             mainPhotoID: draft.mainPhotoID,
@@ -253,24 +266,20 @@ struct InventoryEditingService: Sendable {
         )
         upsert(board, in: &snapshot.boards)
 
-        snapshot.keycapSets.indices.forEach { index in
-            if snapshot.keycapSets[index].mountedBoardID == draft.id,
-               snapshot.keycapSets[index].id != draft.keycapSetID {
-                snapshot.keycapSets[index].mountedBoardID = nil
-                snapshot.keycapSets[index].updatedAt = now
-            }
+        for index in snapshot.boards.indices where snapshot.boards[index].id != draft.id {
+            snapshot.boards[index].keycapSetIDs.removeAll { selected.contains($0) }
         }
-        if let keycapID = draft.keycapSetID,
-           let keycapIndex = snapshot.keycapSets.firstIndex(where: { $0.id == keycapID }) {
-            if let previousBoardID = snapshot.keycapSets[keycapIndex].mountedBoardID,
-               previousBoardID != draft.id,
-               let previousBoardIndex = snapshot.boards.firstIndex(where: { $0.id == previousBoardID }),
-               snapshot.boards[previousBoardIndex].keycapSetID == keycapID {
-                snapshot.boards[previousBoardIndex].keycapSetID = nil
-                snapshot.boards[previousBoardIndex].updatedAt = now
+        for index in snapshot.keycapSets.indices {
+            let set = snapshot.keycapSets[index]
+            if selected.contains(set.id) {
+                guard set.mountedBoardID != board.id else { continue }
+                snapshot.keycapSets[index].mountedBoardID = board.id
+            } else if set.mountedBoardID == board.id {
+                snapshot.keycapSets[index].mountedBoardID = nil
+            } else {
+                continue
             }
-            snapshot.keycapSets[keycapIndex].mountedBoardID = draft.id
-            snapshot.keycapSets[keycapIndex].updatedAt = now
+            snapshot.keycapSets[index].updatedAt = now
         }
         snapshot.switchInstallations.removeAll { $0.boardID == draft.id }
         snapshot.switchInstallations.append(contentsOf: draft.installations.compactMap { switchID, quantity in
@@ -302,24 +311,14 @@ struct InventoryEditingService: Sendable {
         )
         upsert(item, in: &snapshot.keycapSets)
 
-        snapshot.boards.indices.forEach { index in
-            if snapshot.boards[index].keycapSetID == draft.id,
-               snapshot.boards[index].id != draft.mountedBoardID {
-                snapshot.boards[index].keycapSetID = nil
-                snapshot.boards[index].updatedAt = now
+        for index in snapshot.boards.indices {
+            if snapshot.boards[index].id == draft.mountedBoardID {
+                if !snapshot.boards[index].keycapSetIDs.contains(draft.id) {
+                    snapshot.boards[index].keycapSetIDs.append(draft.id)
+                }
+            } else {
+                snapshot.boards[index].keycapSetIDs.removeAll { $0 == draft.id }
             }
-        }
-        if let boardID = draft.mountedBoardID,
-           let boardIndex = snapshot.boards.firstIndex(where: { $0.id == boardID }) {
-            if let previousKeycapID = snapshot.boards[boardIndex].keycapSetID,
-               previousKeycapID != draft.id,
-               let previousKeycapIndex = snapshot.keycapSets.firstIndex(where: { $0.id == previousKeycapID }),
-               snapshot.keycapSets[previousKeycapIndex].mountedBoardID == boardID {
-                snapshot.keycapSets[previousKeycapIndex].mountedBoardID = nil
-                snapshot.keycapSets[previousKeycapIndex].updatedAt = now
-            }
-            snapshot.boards[boardIndex].keycapSetID = draft.id
-            snapshot.boards[boardIndex].updatedAt = now
         }
     }
 

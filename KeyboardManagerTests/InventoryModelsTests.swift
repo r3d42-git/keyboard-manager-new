@@ -2,6 +2,45 @@ import XCTest
 @testable import KeyboardManager
 
 final class InventoryModelsTests: XCTestCase {
+    func testLocalBoardJSONReadsOldMountAndEmitsOrderedPluralIDs() throws {
+        let board = Board(id: "one", name: "One")
+        let data = try JSONEncoder().encode(board)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        json.removeValue(forKey: "keycapSetIDs")
+        let decoder = JSONDecoder()
+        func decode() throws -> Board {
+            try decoder.decode(Board.self, from: JSONSerialization.data(withJSONObject: json))
+        }
+        XCTAssertEqual(try decode().keycapSetIDs, [])
+        json["keycapSetID"] = "base"
+        XCTAssertEqual(try decode().keycapSetIDs, ["base"])
+        json["keycapSetIDs"] = ["accent", "base"]
+        let current = try decode()
+        XCTAssertEqual(current.keycapSetIDs, ["accent", "base"])
+        let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(current)) as? [String: Any])
+        XCTAssertNil(encoded["keycapSetID"])
+        XCTAssertEqual(encoded["keycapSetIDs"] as? [String], ["accent", "base"])
+    }
+
+    func testCompletingOneSidedMountsPreservesOrderAndMakesAllSetsSearchable() {
+        var snapshot = InventorySnapshot.empty
+        snapshot.boards = [Board(id: "b", name: "Board", keycapSetIDs: ["base"])]
+        snapshot.keycapSets = [
+            KeycapSet(id: "accent", name: "Blue accent", mountedBoardID: "b"),
+            KeycapSet(id: "base", name: "Ivory base")
+        ]
+        snapshot.completeOneSidedKeycapMounts()
+        XCTAssertEqual(snapshot.boards[0].keycapSetIDs, ["base", "accent"])
+        XCTAssertEqual(snapshot.keycapSets.map(\.mountedBoardID), ["b", "b"])
+        let first = snapshot
+        snapshot.completeOneSidedKeycapMounts()
+        XCTAssertEqual(snapshot, first)
+        let results = InventoryQuery.results(
+            in: snapshot, kind: .board, filters: InventoryFilters(searchText: "Blue accent"), sort: .name
+        )
+        XCTAssertEqual(results.map(\.keycapsSummary), ["Ivory base, Blue accent"])
+    }
+
     func testStringCatalogProvidesGermanAndEnglishAtRuntime() {
         XCTAssertEqual(L10n.text("Übersicht", language: "de"), "Übersicht")
         XCTAssertEqual(L10n.text("Übersicht", language: "en"), "Overview")
@@ -15,11 +54,69 @@ final class InventoryModelsTests: XCTestCase {
         XCTAssertEqual(AppRoute.primary, [.overview, .gallery, .capture])
     }
 
+    func testOverviewSortsPhotoCountsNumericallyAndKeycapNamesNaturally() {
+        var snapshot = InventorySnapshot.empty
+        snapshot.boards = [
+            Board(id: "ten", name: "A", legacyKeycapsName: "Kit 10", photoIDs: (1...10).map { "photo-\($0)" }),
+            Board(id: "two", name: "Z", legacyKeycapsName: "Kit 2", photoIDs: ["p1", "p2"]),
+            Board(id: "empty", name: "M")
+        ]
+        for field in [InventorySort.Field.photoCount, .keycaps] {
+            func ids(_ order: SortOrder) -> [String] {
+                InventoryQuery.results(in: snapshot, kind: .board, filters: InventoryFilters(),
+                                       sort: InventorySort(field, order: order)).map(\.id)
+            }
+            XCTAssertEqual(ids(.forward), ["empty", "two", "ten"])
+            XCTAssertEqual(ids(.reverse), ["ten", "two", "empty"])
+        }
+    }
+
+    func testSwitchSortsUseIndependentNumericTotals() {
+        var snapshot = InventorySnapshot.empty
+        snapshot.boards = [Board(id: "one"), Board(id: "two")]
+        snapshot.switchSets = [
+            SwitchSet(id: "a", name: "A", quantity: 12),
+            SwitchSet(id: "b", name: "B", quantity: 100),
+            SwitchSet(id: "c", name: "C", quantity: 30)
+        ]
+        snapshot.switchInstallations = [
+            SwitchInstallation(switchSetID: "a", boardID: "one", quantity: 2),
+            SwitchInstallation(switchSetID: "b", boardID: "one", quantity: 70),
+            SwitchInstallation(switchSetID: "b", boardID: "two", quantity: 29)
+        ]
+        let orders: [(InventorySort.Field, [String])] = [
+            (.quantity, ["a", "c", "b"]), (.installedQuantity, ["c", "a", "b"]), (.availableQuantity, ["b", "a", "c"])
+        ]
+        for (field, ascending) in orders {
+            for order in [SortOrder.forward, .reverse] {
+                let result = InventoryQuery.results(in: snapshot, kind: .switchSet, filters: InventoryFilters(),
+                                                    sort: InventorySort(field, order: order))
+                XCTAssertEqual(result.map(\.id), order == .forward ? ascending : Array(ascending.reversed()))
+            }
+        }
+    }
+
+    func testQuickFiltersCombineLocalPhotoMountAndSearchCriteria() {
+        var snapshot = InventorySnapshot.empty
+        snapshot.boards = [Board(id: "board", name: "Studio")]
+        snapshot.keycapSets = [
+            KeycapSet(id: "free", name: "Terra Base", coverURL: "https://example.com/cover.jpg"),
+            KeycapSet(id: "mounted", name: "Terra Accent", mountedBoardID: "board"),
+            KeycapSet(id: "withPhoto", name: "Terra Novelties", photoIDs: ["photo"]),
+            KeycapSet(id: "other", name: "Solar Base")
+        ]
+        let filters = InventoryFilters(searchText: "terra", withoutPhoto: true, unmountedOnly: true)
+        let results = InventoryQuery.results(in: snapshot, kind: .keycapSet, filters: filters, sort: .name)
+        XCTAssertEqual(results.map(\.id), ["free"])
+        XCTAssertFalse(InventoryFilters(unmountedOnly: true).isEmpty(for: .artisanSet))
+        XCTAssertTrue(InventoryFilters(unmountedOnly: true).isEmpty(for: .switchSet))
+    }
+
     func testPrimaryDetailSortUsesAConcreteLabelForEachInventoryKind() {
-        XCTAssertEqual(InventorySort.primaryDetail.title(for: .board), "Format")
-        XCTAssertEqual(InventorySort.primaryDetail.title(for: .keycapSet), "Profil")
-        XCTAssertEqual(InventorySort.primaryDetail.title(for: .artisanSet), "Profil")
-        XCTAssertEqual(InventorySort.primaryDetail.title(for: .switchSet), "Typ")
+        XCTAssertEqual(InventorySort.Field.primaryDetail.title(for: .board), "Format")
+        XCTAssertEqual(InventorySort.Field.primaryDetail.title(for: .keycapSet), "Profil")
+        XCTAssertEqual(InventorySort.Field.primaryDetail.title(for: .artisanSet), "Profil")
+        XCTAssertEqual(InventorySort.Field.primaryDetail.title(for: .switchSet), "Typ")
     }
 
     func testAllV1PinValuesHaveStableDisplayNames() {
@@ -119,7 +216,7 @@ final class InventoryModelsTests: XCTestCase {
 
     func testBoardSpotlightMetadataIncludesLinkedKeycapsAndSwitchQuantities() throws {
         var snapshot = InventorySnapshot.empty
-        snapshot.boards = [Board(id: "board-a", name: "Board", keycapSetID: "keycap-a")]
+        snapshot.boards = [Board(id: "board-a", name: "Board", keycapSetIDs: ["keycap-a"])]
         snapshot.keycapSets = [KeycapSet(id: "keycap-a", name: "Keycaps")]
         snapshot.switchSets = [SwitchSet(id: "switch-a", name: "Switches")]
         snapshot.switchInstallations = [
@@ -139,7 +236,7 @@ final class InventoryModelsTests: XCTestCase {
             Board(
                 id: "board-a",
                 name: "Board A",
-                keycapSetID: "keycap-a",
+                keycapSetIDs: ["keycap-a"],
                 photoIDs: ["board-photo"],
                 mainPhotoID: "board-photo"
             )

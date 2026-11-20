@@ -4,6 +4,90 @@ import XCTest
 
 @MainActor
 final class InventoryStoreWindowTests: XCTestCase {
+    func testCollectionStartsInKeyboardGallery() {
+        let store = makeStore()
+
+        XCTAssertEqual(store.route, .gallery)
+        XCTAssertEqual(store.selectedKind, .board)
+    }
+
+    func testSortPreferencesRoundTripPerKindAndIsolateInvalidEntries() throws {
+        let domain = "SortPreferencesTests-\(UUID().uuidString)"
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: domain))
+        defer { preferences.removePersistentDomain(forName: domain) }
+        let sorts: [InventoryItemKind: InventorySort] = [
+            .board: InventorySort(.manufacturer, order: .reverse),
+            .keycapSet: InventorySort(.contents),
+            .artisanSet: InventorySort(.photoCount, order: .reverse),
+            .switchSet: InventorySort(.availableQuantity, order: .reverse)
+        ]
+        let store = InventoryStore(preferences: preferences)
+        for (kind, sort) in sorts {
+            store.selectedKind = kind
+            XCTAssertEqual(store.collectionSort, .name)
+            store.collectionSort = sort
+        }
+        let reopened = InventoryStore(preferences: preferences)
+        XCTAssertEqual(reopened.overviewSortsByKind, sorts)
+        XCTAssertEqual(reopened.route, .gallery)
+        XCTAssertEqual(reopened.selectedKind, .board)
+
+        preferences.set(["field": "removedColumn", "ascending": false], forKey: "collectionSort.artisanSet")
+        preferences.set(["field": "quantity", "ascending": true], forKey: "collectionSort.keycapSet")
+        let recovered = InventoryStore(preferences: preferences)
+        for (kind, sort) in sorts {
+            recovered.selectedKind = kind
+            XCTAssertEqual(recovered.collectionSort, kind == .artisanSet || kind == .keycapSet ? .name : sort)
+        }
+    }
+
+    func testLeavingCleanEditorReturnsToKeyboardGallery() {
+        let store = makeStore()
+        store.prepareNewItem(.keycapSet)
+
+        store.leaveEditor()
+
+        XCTAssertEqual(store.route, .gallery)
+        XCTAssertEqual(store.selectedKind, .board)
+        XCTAssertFalse(store.isDiscardConfirmationPresented)
+    }
+
+    func testLeavingDirtyEditorReturnsToKeyboardGalleryOnlyAfterDiscard() {
+        let store = makeStore()
+        store.prepareNewItem(.artisanSet)
+        store.isEditorDirty = true
+        let editor = store.editorIdentity
+
+        store.leaveEditor()
+        XCTAssertTrue(store.isDiscardConfirmationPresented)
+        store.cancelDiscard()
+        XCTAssertTrue(store.isEditorDirty)
+        XCTAssertEqual(store.route, .capture)
+        XCTAssertEqual(store.editorIdentity, editor)
+
+        store.leaveEditor()
+        store.confirmDiscardAndContinue()
+
+        XCTAssertEqual(store.route, .gallery)
+        XCTAssertEqual(store.selectedKind, .board)
+        XCTAssertFalse(store.isEditorDirty)
+    }
+
+    func testSavingNewNonKeyboardItemReturnsToKeyboardGallery() async {
+        let store = makeStore()
+        await store.load()
+        store.prepareNewItem(.keycapSet)
+        var draft = store.editorDraft()
+        draft.name = "Workshop Caps"
+
+        let succeeded = await store.save(draft, preparedPhotos: [])
+
+        XCTAssertTrue(succeeded)
+        XCTAssertEqual(store.snapshot.keycapSets.map(\.name), ["Workshop Caps"])
+        XCTAssertEqual(store.route, .gallery)
+        XCTAssertEqual(store.selectedKind, .board)
+    }
+
     func testPreferredLanguageIsNormalizedAndPersistedInSnapshot() async throws {
         let repository = InMemoryInventoryRepository()
         let store = InventoryStore(repository: repository)
@@ -18,6 +102,31 @@ final class InventoryStoreWindowTests: XCTestCase {
 
         await store.updatePreferredLanguage("unsupported")
         XCTAssertEqual(store.snapshot.metadata.preferredLanguage, "de")
+    }
+
+    func testConfirmedNewDraftOfSameKindGetsFreshEditorIdentity() {
+        let store = makeStore()
+        store.prepareNewItem(.keycapSet)
+        let firstIdentity = store.editorIdentity
+        store.isEditorDirty = true
+        store.prepareNewItem(.keycapSet)
+        XCTAssertEqual(store.editorIdentity, firstIdentity)
+        store.confirmDiscardAndContinue()
+        XCTAssertNotEqual(store.editorIdentity, firstIdentity)
+        XCTAssertFalse(store.isEditorDirty)
+    }
+
+    func testSavingEditorKeepsItsRouteAndWindow() {
+        let store = makeStore()
+        store.prepareNewItem(.board)
+        let firstIdentity = store.editorIdentity
+        store.editorSaveState = .saving
+        store.prepareNewItem(.artisanSet)
+        store.requestRoute(.gallery)
+        store.editItem(kind: .switchSet, id: "other")
+        XCTAssertEqual(store.route, .capture)
+        XCTAssertEqual(store.editorIdentity, firstIdentity)
+        XCTAssertFalse(store.shouldAllowWindowClose())
     }
 
     func testCleanEditorAllowsWindowToCloseImmediately() {
@@ -93,7 +202,7 @@ final class InventoryStoreWindowTests: XCTestCase {
         }
     }
 
-    func testSavingEditedItemRestoresOverviewSessionSelectionScrollAndFocusRequest() async throws {
+    func testSavingEditedItemReturnsToGalleryAndPreservesOverviewSession() async throws {
         let snapshot = InventorySnapshot(
             metadata: .empty,
             libraryValues: .empty,
@@ -112,7 +221,7 @@ final class InventoryStoreWindowTests: XCTestCase {
         var filters = InventoryFilters()
         filters.manufacturer = "Mode"
         store.overviewFiltersByKind[.board] = filters
-        store.overviewSortsByKind[.board] = .recentlyUpdated
+        store.collectionSort = .recentlyUpdated
         store.updateOverviewScrollOffset(243.5, for: .board)
         store.editItem(kind: .board, id: "board-1")
 
@@ -121,7 +230,8 @@ final class InventoryStoreWindowTests: XCTestCase {
         let succeeded = await store.save(draft, preparedPhotos: [])
 
         XCTAssertTrue(succeeded)
-        XCTAssertEqual(store.route, .overview)
+        XCTAssertEqual(store.route, .gallery)
+        XCTAssertEqual(store.selectedKind, .board)
         XCTAssertEqual(store.overviewSelectionByKind[.board], "board-1")
         XCTAssertEqual(
             store.overviewFiltersByKind[.board]?.manufacturer,

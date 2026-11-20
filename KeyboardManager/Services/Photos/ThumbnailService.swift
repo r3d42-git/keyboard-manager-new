@@ -6,11 +6,11 @@ actor ThumbnailService {
     static let maximumPixelSize = 640
     static let memoryEntryLimit = 128
 
-    private let layout: MigrationStorageLayout
+    private let layout: InventoryStorageLayout
     private let fileManager: FileManager
     private var memoryCache: [String: Data] = [:]
 
-    init(layout: MigrationStorageLayout = .default, fileManager: FileManager = .default) {
+    init(layout: InventoryStorageLayout = .default, fileManager: FileManager = .default) {
         self.layout = layout
         self.fileManager = fileManager
     }
@@ -80,6 +80,10 @@ actor ThumbnailService {
             guard let url = safeCacheURL(for: record) else { continue }
             try? fileManager.removeItem(at: url)
         }
+    }
+
+    func clearMemoryCache() {
+        memoryCache.removeAll()
     }
 
     private func remember(_ data: Data, for id: String) {

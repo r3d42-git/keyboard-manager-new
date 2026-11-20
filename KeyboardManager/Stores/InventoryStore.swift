@@ -5,11 +5,20 @@ import Observation
 @Observable
 final class InventoryStore {
     var snapshot: InventorySnapshot = .empty
-    var route: AppRoute = .overview
+    var route: AppRoute = .gallery
     var selectedKind: InventoryItemKind = .board
     var selectedItemID: String?
     var overviewFiltersByKind: [InventoryItemKind: InventoryFilters] = [:]
-    var overviewSortsByKind: [InventoryItemKind: InventorySort] = [:]
+    private(set) var overviewSortsByKind: [InventoryItemKind: InventorySort] = [:]
+    var collectionSort: InventorySort {
+        get { overviewSortsByKind[selectedKind, default: .name] }
+        set {
+            guard newValue != collectionSort,
+                  InventorySort.Field.available(for: selectedKind).contains(newValue.field) else { return }
+            overviewSortsByKind[selectedKind] = newValue
+            if let preferences { newValue.save(for: selectedKind, in: preferences) }
+        }
+    }
     private(set) var overviewSelectionByKind: [InventoryItemKind: String] = [:]
     private(set) var overviewScrollOffsetByKind: [InventoryItemKind: Double] = [:]
     private(set) var overviewRestoreRequest: OverviewRestoreRequest?
@@ -20,22 +29,18 @@ final class InventoryStore {
     var isWindowCloseConfirmationPresented = false
     var navigationRevision = 0
     private(set) var windowCloseRevision = 0
-    var migrationReadiness: MigrationReadiness = .notScanned
-    var migrationDiscoveryState: V1SourceDiscoveryState = .idle
-    var migrationInspectionState: MigrationInspectionState = .idle
-    var migrationCommitState: MigrationCommitState = .idle
     var backupExportState: BackupExportState = .idle
+    var isBackupRestorePresented = false
+    private(set) var backupRestoreState: BackupRestoreState = .idle
+    private(set) var backupRestoreRevision = 0
+    var isReportExportPresented = false
     var reportExportState: InventoryReportExportState = .idle
     private(set) var languagePersistenceError: String?
-    private(set) var migrationReportURL: URL?
-    private(set) var pendingMigrationSnapshot: InventorySnapshot?
-    private var pendingMigrationResult: MigrationDryRunResult?
-    private var pendingMigrationSourceURL: URL?
 
     private let repository: any InventoryRepository
-    private let migrationService: V1MigrationService
-    private let migrationCommitService: MigrationCommitService
+    private let preferences: UserDefaults?
     private let backupExportService: BackupExportService
+    private let backupRestoreService: BackupRestoreService
     private let reportExportService: InventoryReportExportService
     private let editingService = InventoryEditingService()
     private let photoService: PhotoImportService
@@ -43,27 +48,40 @@ final class InventoryStore {
     private var pendingEditorNavigation: EditorNavigationTarget?
     private var pendingOverviewReturn: OverviewReturnContext?
     private var overviewRestoreRevision = 0
+    private var editorRevision = 0
+    private var isSavingPreferredLanguage = false
+    private var activeEditorPhotoPreparations = 0
+    private var activeThumbnailRequests = 0
+    private var thumbnailDrain: CheckedContinuation<Void, Never>?
+    private var backupRestoreSession: UUID?
+    private var backupPreparationTask: Task<BackupRestorePreview, Error>?
+    private var isCancellingBackupRestore = false
 
     init(
         repository: any InventoryRepository = SQLiteInventoryRepository(),
-        migrationService: V1MigrationService = V1MigrationService(),
-        migrationCommitService: MigrationCommitService = MigrationCommitService(),
         backupExportService: BackupExportService = BackupExportService(),
+        backupRestoreService: BackupRestoreService = BackupRestoreService(),
         reportExportService: InventoryReportExportService = InventoryReportExportService(),
         photoService: PhotoImportService = PhotoImportService(),
-        thumbnailService: ThumbnailService = ThumbnailService()
+        thumbnailService: ThumbnailService = ThumbnailService(),
+        preferences: UserDefaults? = nil
     ) {
         self.repository = repository
-        self.migrationService = migrationService
-        self.migrationCommitService = migrationCommitService
         self.backupExportService = backupExportService
+        self.backupRestoreService = backupRestoreService
         self.reportExportService = reportExportService
         self.photoService = photoService
         self.thumbnailService = thumbnailService
+        self.preferences = preferences
+        if let preferences {
+            for kind in InventoryItemKind.allCases {
+                overviewSortsByKind[kind] = InventorySort.saved(for: kind, in: preferences)
+            }
+        }
     }
 
     func load() async {
-        guard loadState == .idle else { return }
+        guard loadState == .idle, !isBackupRestoreActive else { return }
         loadState = .loading
 
         do {
@@ -76,11 +94,14 @@ final class InventoryStore {
 
     func updatePreferredLanguage(_ value: String) async {
         let normalized = AppLanguage.normalized(value).rawValue
-        guard loadState == .loaded else { return }
+        guard loadState == .loaded, !isBackupRestoreActive,
+              editorSaveState != .saving, !isSavingPreferredLanguage else { return }
         guard snapshot.metadata.preferredLanguage != normalized else {
             languagePersistenceError = nil
             return
         }
+        isSavingPreferredLanguage = true
+        defer { isSavingPreferredLanguage = false }
         var updated = snapshot
         updated.metadata.preferredLanguage = normalized
         do {
@@ -95,7 +116,16 @@ final class InventoryStore {
         }
     }
 
+    var canStartEditor: Bool {
+        loadState == .loaded && canNavigateEditor
+    }
+
+    private var canNavigateEditor: Bool {
+        !isBackupRestoreActive && editorSaveState != .saving && activeEditorPhotoPreparations == 0
+    }
+
     func prepareNewItem(_ kind: InventoryItemKind) {
+        guard canNavigateEditor else { return }
         guard !needsDiscardConfirmation else {
             pendingEditorNavigation = .new(kind)
             isDiscardConfirmationPresented = true
@@ -105,6 +135,7 @@ final class InventoryStore {
     }
 
     func requestRoute(_ newRoute: AppRoute) {
+        guard canNavigateEditor else { return }
         guard newRoute != route else { return }
         guard !needsDiscardConfirmation else {
             pendingEditorNavigation = .route(newRoute)
@@ -122,10 +153,28 @@ final class InventoryStore {
                 itemID: pendingOverviewReturn.itemID
             )
         }
+        if newRoute == .gallery, !InventoryQuery.galleryKinds.contains(selectedKind) {
+            selectKeyboardGallery()
+            return
+        }
         route = newRoute
     }
 
+    func leaveEditor() {
+        guard route == .capture, canNavigateEditor else { return }
+        if needsDiscardConfirmation {
+            pendingEditorNavigation = .leaveEditor
+            isDiscardConfirmationPresented = true
+            return
+        }
+        if let pendingOverviewReturn {
+            scheduleOverviewRestore(kind: pendingOverviewReturn.kind, itemID: pendingOverviewReturn.itemID)
+        }
+        selectKeyboardGallery()
+    }
+
     func editItem(kind: InventoryItemKind, id: String) {
+        guard canNavigateEditor else { return }
         guard !needsDiscardConfirmation else {
             pendingEditorNavigation = .edit(kind, id)
             isDiscardConfirmationPresented = true
@@ -156,27 +205,29 @@ final class InventoryStore {
     }
 
     func confirmDiscardAndContinue() {
-        isEditorDirty = false
-        isDiscardConfirmationPresented = false
         let target = pendingEditorNavigation
         pendingEditorNavigation = nil
+        isDiscardConfirmationPresented = false
+        guard canNavigateEditor else { return }
+        if case .restoreBackup = target {
+            guard canRestoreBackup else { return }
+        }
+        isEditorDirty = false
         switch target {
         case let .route(route):
-            if route == .capture {
-                openNewItem(selectedKind)
-                return
-            }
-            if route == .overview, let pendingOverviewReturn {
-                scheduleOverviewRestore(
-                    kind: pendingOverviewReturn.kind,
-                    itemID: pendingOverviewReturn.itemID
-                )
-            }
-            self.route = route
+            requestRoute(route)
+        case .leaveEditor:
+            leaveEditor()
         case let .new(kind):
             openNewItem(kind)
         case let .edit(kind, id):
             openEditor(kind: kind, id: id)
+        case .restoreBackup:
+            if let pendingOverviewReturn {
+                scheduleOverviewRestore(kind: pendingOverviewReturn.kind, itemID: pendingOverviewReturn.itemID)
+            }
+            route = .overview
+            openBackupRestore()
         case nil:
             break
         }
@@ -189,14 +240,16 @@ final class InventoryStore {
     }
 
     func shouldAllowWindowClose() -> Bool {
+        guard canNavigateEditor else { return false }
         guard needsDiscardConfirmation else { return true }
         isWindowCloseConfirmationPresented = true
         return false
     }
 
     func confirmDiscardAndCloseWindow() {
-        isEditorDirty = false
         isWindowCloseConfirmationPresented = false
+        guard canNavigateEditor else { return }
+        isEditorDirty = false
         windowCloseRevision += 1
     }
 
@@ -229,17 +282,33 @@ final class InventoryStore {
     }
 
     var editorIdentity: String {
-        "\(selectedKind.rawValue)::\(selectedItemID ?? "new")"
+        "\(editorRevision)::\(selectedKind.rawValue)::\(selectedItemID ?? "new")"
     }
 
     func preparePhotos(urls: [URL], for draft: InventoryDraft) async throws -> [PreparedPhoto] {
-        let owner = PhotoOwner(type: photoOwnerType(for: draft.kind), id: draft.id)
-        return try await photoService.prepare(urls: urls, owner: owner)
+        try await prepareEditorPhotos(for: draft) { owner in
+            try await photoService.prepare(urls: urls, owner: owner)
+        }
     }
 
     func prepareExternalPhotos(urlStrings: [String], for draft: InventoryDraft) async throws -> [PreparedPhoto] {
+        try await prepareEditorPhotos(for: draft) { owner in
+            try await photoService.prepareExternal(urlStrings: urlStrings, owner: owner)
+        }
+    }
+
+    private func prepareEditorPhotos(
+        for draft: InventoryDraft,
+        using prepare: (PhotoOwner) async throws -> [PreparedPhoto]
+    ) async throws -> [PreparedPhoto] {
+        guard !isBackupRestoreActive, editorSaveState != .saving,
+              !isDiscardConfirmationPresented, !isWindowCloseConfirmationPresented else {
+            throw CancellationError()
+        }
+        activeEditorPhotoPreparations += 1
+        defer { activeEditorPhotoPreparations -= 1 }
         let owner = PhotoOwner(type: photoOwnerType(for: draft.kind), id: draft.id)
-        return try await photoService.prepareExternal(urlStrings: urlStrings, owner: owner)
+        return try await prepare(owner)
     }
 
     func photoRecord(id: String?) -> PhotoRecord? {
@@ -248,14 +317,28 @@ final class InventoryStore {
     }
 
     func thumbnailData(for record: PhotoRecord) async -> Data? {
-        await thumbnailService.thumbnailData(for: record)
+        guard !isBackupRestoreInstalling else { return nil }
+        activeThumbnailRequests += 1
+        defer {
+            activeThumbnailRequests -= 1
+            if activeThumbnailRequests == 0 {
+                thumbnailDrain?.resume()
+                thumbnailDrain = nil
+            }
+        }
+        let data = await thumbnailService.thumbnailData(for: record)
+        return isBackupRestoreInstalling ? nil : data
     }
 
     func photoData(for record: PhotoRecord) async -> Data? {
-        await photoService.data(for: record)
+        guard !isBackupRestoreInstalling else { return nil }
+        let revision = backupRestoreRevision
+        let data = await photoService.data(for: record)
+        return isBackupRestoreInstalling || revision != backupRestoreRevision ? nil : data
     }
 
     func save(_ draft: InventoryDraft, preparedPhotos: [PreparedPhoto]) async -> Bool {
+        guard canNavigateEditor, !isSavingPreferredLanguage else { return false }
         editorSaveState = .saving
         var draft = draft
         for photo in preparedPhotos where !draft.photoIDs.contains(photo.record.id) {
@@ -281,12 +364,12 @@ final class InventoryStore {
             await photoService.remove(result.removedPhotos)
             await thumbnailService.remove(result.removedPhotos)
             snapshot = result.snapshot
-            selectedKind = draft.kind
-            selectedItemID = draft.id
             isEditorDirty = false
-            editorSaveState = .saved("„\(draft.normalizedName)“ wurde gespeichert.")
+            editorSaveState = .saved(
+                L10n.text("„%@“ wurde gespeichert.", arguments: draft.normalizedName)
+            )
             scheduleOverviewRestore(kind: draft.kind, itemID: draft.id)
-            route = .overview
+            selectKeyboardGallery()
             return true
         } catch {
             editorSaveState = .failed(error.localizedDescription)
@@ -295,6 +378,7 @@ final class InventoryStore {
     }
 
     func deleteItem(kind: InventoryItemKind, id: String) async -> Bool {
+        guard canNavigateEditor, !isSavingPreferredLanguage else { return false }
         editorSaveState = .saving
         let wasEditing = route == .capture
         do {
@@ -307,11 +391,13 @@ final class InventoryStore {
                 selectedItemID = nil
             }
             isEditorDirty = false
-            editorSaveState = .saved("Der Eintrag wurde gelöscht.")
+            editorSaveState = .saved(L10n.text("Der Eintrag wurde gelöscht."))
             if wasEditing {
                 scheduleOverviewRestore(kind: kind, itemID: nil)
+                selectKeyboardGallery()
+            } else {
+                route = .overview
             }
-            route = .overview
             return true
         } catch {
             editorSaveState = .failed(error.localizedDescription)
@@ -320,13 +406,19 @@ final class InventoryStore {
     }
 
     func clearEditorStatus() {
+        guard editorSaveState != .saving else { return }
         editorSaveState = .idle
     }
 
+    var canExportBackup: Bool {
+        guard loadState == .loaded, !isBackupRestoreActive,
+              editorSaveState != .saving else { return false }
+        if case .exporting = backupExportState { return false }
+        return true
+    }
+
     func exportBackup(to destinationURL: URL) async {
-        if case .exporting = backupExportState {
-            return
-        }
+        guard canExportBackup else { return }
         backupExportState = .exporting
         let hasSecurityScope = destinationURL.startAccessingSecurityScopedResource()
         defer {
@@ -356,11 +448,141 @@ final class InventoryStore {
         backupExportState = .idle
     }
 
+    var isBackupRestoreActive: Bool {
+        backupRestoreSession != nil || isCancellingBackupRestore
+    }
+
+    var isBackupRestoreInstalling: Bool {
+        backupRestoreState == .installing
+    }
+
+    var canRestoreBackup: Bool {
+        guard canNavigateEditor, !isSavingPreferredLanguage, !isReportExportPresented,
+              !isDiscardConfirmationPresented, !isWindowCloseConfirmationPresented else { return false }
+        if case .exporting = backupExportState { return false }
+        if case .exporting = reportExportState { return false }
+        switch loadState {
+        case .loaded, .failed: return true
+        case .idle, .loading: return false
+        }
+    }
+
+    func requestBackupRestore() {
+        guard canRestoreBackup else { return }
+        if needsDiscardConfirmation {
+            pendingEditorNavigation = .restoreBackup
+            isDiscardConfirmationPresented = true
+            return
+        }
+        openBackupRestore()
+    }
+
+    func prepareBackupRestore(from source: URL) async {
+        guard let session = backupRestoreSession, !isCancellingBackupRestore else { return }
+        switch backupRestoreState {
+        case .idle, .failed, .ready: break
+        case .preparing, .installing, .succeeded: return
+        }
+        backupRestoreState = .preparing
+        let language = loadState == .loaded ? snapshot.metadata.preferredLanguage : AppLanguage.current.rawValue
+        let service = backupRestoreService
+        let task = Task {
+            try await service.discardPrepared()
+            return try await service.prepare(from: source, preferredLanguage: language)
+        }
+        backupPreparationTask = task
+
+        do {
+            let preview = try await withTaskCancellationHandler {
+                try await task.value
+            } onCancel: {
+                task.cancel()
+            }
+            guard backupRestoreSession == session else { return }
+            if Task.isCancelled {
+                try await service.discardPrepared()
+                guard backupRestoreSession == session else { return }
+                backupRestoreState = .idle
+            } else {
+                backupRestoreState = .ready(preview)
+            }
+        } catch {
+            guard backupRestoreSession == session else { return }
+            backupRestoreState = error is CancellationError ? .idle : .failed(error.localizedDescription)
+        }
+        backupPreparationTask = nil
+    }
+
+    func cancelBackupRestore() async {
+        guard backupRestoreSession != nil, !isBackupRestoreInstalling, !isCancellingBackupRestore else { return }
+        isCancellingBackupRestore = true
+        backupRestoreSession = nil
+        defer { isCancellingBackupRestore = false }
+
+        let task = backupPreparationTask
+        backupPreparationTask = nil
+        task?.cancel()
+        _ = await task?.result
+        do {
+            try await backupRestoreService.discardPrepared()
+            backupRestoreState = .idle
+            isBackupRestorePresented = false
+        } catch {
+            backupRestoreSession = UUID()
+            backupRestoreState = .failed(error.localizedDescription)
+        }
+    }
+
+    func installBackupRestore() async {
+        guard backupRestoreSession != nil, case .ready = backupRestoreState else { return }
+        backupRestoreState = .installing
+        if activeThumbnailRequests > 0 {
+            await withCheckedContinuation { continuation in
+                thumbnailDrain = continuation
+            }
+        }
+        do {
+            let installation = try await backupRestoreService.install()
+            await thumbnailService.clearMemoryCache()
+            snapshot = installation.snapshot
+            loadState = .loaded
+            let counts = installation.result.counts
+            if counts.value(for: selectedKind) == 0 {
+                selectedKind = InventoryItemKind.allCases.first { counts.value(for: $0) > 0 } ?? .board
+            }
+            selectedItemID = nil
+            overviewFiltersByKind.removeAll()
+            overviewSelectionByKind.removeAll()
+            overviewScrollOffsetByKind.removeAll()
+            overviewRestoreRequest = nil
+            pendingOverviewReturn = nil
+            editorSaveState = .idle
+            backupExportState = .idle
+            reportExportState = .idle
+            isEditorDirty = false
+            languagePersistenceError = nil
+            editorRevision += 1
+            route = .overview
+            backupRestoreRevision += 1
+            backupRestoreState = .succeeded(installation.result)
+        } catch {
+            backupRestoreState = .failed(error.localizedDescription)
+        }
+    }
+
+    var canExportReport: Bool {
+        guard loadState == .loaded, !isBackupRestoreActive,
+              editorSaveState != .saving else { return false }
+        if case .exporting = reportExportState { return false }
+        return true
+    }
+
     func exportReport(
         context: InventoryReportContext,
         options: InventoryReportOptions,
         to destinationURL: URL
     ) async {
+        guard canExportReport else { return }
         reportExportState = .exporting(options.format)
         let hasSecurityScope = destinationURL.startAccessingSecurityScopedResource()
         defer {
@@ -404,7 +626,20 @@ final class InventoryStore {
         route == .capture && isEditorDirty
     }
 
+    private func selectKeyboardGallery() {
+        selectedKind = .board
+        selectedItemID = overviewSelectionByKind[.board]
+        route = .gallery
+    }
+
+    private func openBackupRestore() {
+        backupRestoreSession = UUID()
+        backupRestoreState = .idle
+        isBackupRestorePresented = true
+    }
+
     private func openNewItem(_ kind: InventoryItemKind) {
+        editorRevision += 1
         pendingOverviewReturn = nil
         selectedKind = kind
         selectedItemID = nil
@@ -414,6 +649,7 @@ final class InventoryStore {
     }
 
     private func openEditor(kind: InventoryItemKind, id: String) {
+        editorRevision += 1
         updateOverviewSelection(id, for: kind)
         pendingOverviewReturn = OverviewReturnContext(
             kind: kind,
@@ -454,157 +690,6 @@ final class InventoryStore {
         case .switchSet: .switchSet
         }
     }
-
-    func showMigration() {
-        requestRoute(.migration)
-    }
-
-    func discoverMigrationSources(force: Bool = false) async {
-        if !force, migrationDiscoveryState != .idle {
-            return
-        }
-        migrationDiscoveryState = .scanning
-        let canUpdateReadiness = migrationInspectionState == .idle
-
-        do {
-            let result = try await migrationService.discoverInstalledSource()
-            guard let source = result.source else {
-                migrationDiscoveryState = .notFound(
-                    searchedCandidateCount: result.searchedCandidateCount
-                )
-                if canUpdateReadiness {
-                    migrationReadiness = .notScanned
-                }
-                return
-            }
-
-            if result.isV1Running {
-                let reason = V1SourceDiscoveryError.v1IsRunning.localizedDescription
-                migrationDiscoveryState = .blocked(source, reason: reason)
-                if canUpdateReadiness {
-                    migrationReadiness = .blocked(reason: reason)
-                }
-            } else {
-                migrationDiscoveryState = .found(source)
-                if canUpdateReadiness {
-                    migrationReadiness = .ready(sourceCount: 1)
-                }
-            }
-        } catch {
-            migrationDiscoveryState = .failed(error.localizedDescription)
-            if canUpdateReadiness {
-                migrationReadiness = .blocked(reason: error.localizedDescription)
-            }
-        }
-    }
-
-    func inspectDiscoveredMigrationSource() async {
-        guard case let .found(source) = migrationDiscoveryState else { return }
-        await inspectMigrationSource(at: source.directoryURL)
-    }
-
-    func inspectMigrationSource(at url: URL) async {
-        let fileName = url.lastPathComponent
-        migrationReadiness = .scanning
-        migrationInspectionState = .inspecting(fileName: fileName)
-        migrationCommitState = .idle
-        migrationReportURL = nil
-        pendingMigrationSnapshot = nil
-        pendingMigrationResult = nil
-        pendingMigrationSourceURL = nil
-
-        let hasSecurityScope = url.startAccessingSecurityScopedResource()
-        defer {
-            if hasSecurityScope {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        do {
-            let result = try await migrationService.inspectSource(at: url)
-            pendingMigrationSnapshot = result.snapshot
-            pendingMigrationResult = result
-            pendingMigrationSourceURL = url
-            migrationInspectionState = .ready(result.report)
-            migrationReadiness = .ready(sourceCount: 1)
-        } catch {
-            let message = error.localizedDescription
-            migrationInspectionState = .failed(message)
-            migrationReadiness = .blocked(reason: message)
-            if let discoverySource = discoveredSource(matching: url),
-               error is V1SourceDiscoveryError {
-                migrationDiscoveryState = .blocked(discoverySource, reason: message)
-            }
-        }
-    }
-
-    var hasExistingV2Data: Bool {
-        snapshot.counts.totalItems > 0 || snapshot.counts.photos > 0
-    }
-
-    var canCommitMigration: Bool {
-        guard case let .ready(report) = migrationInspectionState,
-              report.canImport,
-              pendingMigrationResult != nil,
-              pendingMigrationSourceURL != nil else {
-            return false
-        }
-        if case .committing = migrationCommitState { return false }
-        if case .succeeded = migrationCommitState { return false }
-        return true
-    }
-
-    func commitPendingMigration() async {
-        guard let sourceURL = pendingMigrationSourceURL,
-              let dryRun = pendingMigrationResult,
-              canCommitMigration else {
-            return
-        }
-
-        migrationCommitState = .committing(fileName: dryRun.report.sourceFileName)
-        let hasSecurityScope = sourceURL.startAccessingSecurityScopedResource()
-        defer {
-            if hasSecurityScope {
-                sourceURL.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        do {
-            let result = try await migrationCommitService.commit(
-                backupURL: sourceURL,
-                expectedDryRun: dryRun
-            )
-            snapshot = result.snapshot
-            loadState = .loaded
-            migrationReportURL = result.reportURL
-            migrationCommitState = .succeeded(result.report)
-            migrationReadiness = .ready(sourceCount: 1)
-        } catch {
-            migrationCommitState = .failed(error.localizedDescription)
-            if dryRun.report.sourceKind == .sqliteDirectory,
-               let discoverySource = discoveredSource(matching: sourceURL),
-               error is V1SourceDiscoveryError {
-                migrationDiscoveryState = .blocked(
-                    discoverySource,
-                    reason: error.localizedDescription
-                )
-            }
-        }
-    }
-
-    private func discoveredSource(matching url: URL) -> V1DiscoveredSource? {
-        let source: V1DiscoveredSource?
-        switch migrationDiscoveryState {
-        case let .found(value), let .blocked(value, _):
-            source = value
-        case .idle, .scanning, .notFound, .failed:
-            source = nil
-        }
-        guard source?.directoryURL.standardizedFileURL == url.standardizedFileURL else {
-            return nil
-        }
-        return source
-    }
 }
 
 struct OverviewRestoreRequest: Equatable, Sendable {
@@ -636,6 +721,8 @@ enum BackupExportState: Equatable, Sendable {
 
 private enum EditorNavigationTarget {
     case route(AppRoute)
+    case leaveEditor
     case new(InventoryItemKind)
     case edit(InventoryItemKind, String)
+    case restoreBackup
 }

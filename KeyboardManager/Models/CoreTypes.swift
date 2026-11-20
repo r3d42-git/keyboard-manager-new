@@ -8,6 +8,8 @@ enum InventoryItemKind: String, CaseIterable, Codable, Hashable, Identifiable, S
 
     var id: Self { self }
 
+    var supportsMountFilter: Bool { self == .keycapSet || self == .artisanSet }
+
     var displayName: String {
         displayName()
     }
@@ -18,6 +20,15 @@ enum InventoryItemKind: String, CaseIterable, Codable, Hashable, Identifiable, S
         case .keycapSet: L10n.text("Keycap-Sets", language: language)
         case .artisanSet: L10n.text("Artisans", language: language)
         case .switchSet: L10n.text("Switches", language: language)
+        }
+    }
+
+    var newItemTitle: String {
+        switch self {
+        case .board: L10n.text("Neues Board")
+        case .keycapSet: L10n.text("Neues Keycap-Set")
+        case .artisanSet: L10n.text("Neuer Artisan")
+        case .switchSet: L10n.text("Neues Switch-Set")
         }
     }
 

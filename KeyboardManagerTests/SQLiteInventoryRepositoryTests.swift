@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import XCTest
 @testable import KeyboardManager
 
@@ -26,6 +27,37 @@ final class SQLiteInventoryRepositoryTests: XCTestCase {
 
         XCTAssertEqual(loaded, expected)
         XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
+    }
+
+    func testOldSQLiteSnapshotLoadsSingleAndReverseMountsAndResavesAllSets() async throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        let repository = SQLiteInventoryRepository(databaseURL: fixture.databaseURL)
+        var snapshot = sampleSnapshot()
+        snapshot.keycapSets = [
+            KeycapSet(id: "base", name: "Base"),
+            KeycapSet(id: "accent", name: "Accent", mountedBoardID: "board_1")
+        ]
+        try await repository.saveSnapshot(snapshot)
+
+        var database: OpaquePointer?
+        let result = sqlite3_open(fixture.databaseURL.path, &database)
+        defer { sqlite3_close(database) }
+        XCTAssertEqual(result, SQLITE_OK)
+        let sql = """
+            UPDATE app_snapshot SET snapshot_json = json_set(
+                json_remove(CAST(snapshot_json AS TEXT), '$.boards[0].keycapSetIDs'),
+                '$.boards[0].keycapSetID', 'base'
+            ) WHERE id = 1
+            """
+        XCTAssertEqual(sqlite3_exec(database, sql, nil, nil, nil), SQLITE_OK)
+
+        let migrated = try await repository.loadSnapshot()
+        XCTAssertEqual(migrated.boards[0].keycapSetIDs, ["base", "accent"])
+        XCTAssertEqual(migrated.keycapSets.map(\.mountedBoardID), ["board_1", "board_1"])
+        try await repository.saveSnapshot(migrated)
+        let reloaded = try await repository.loadSnapshot()
+        XCTAssertEqual(reloaded, migrated)
     }
 
     func testSavingASecondSnapshotReplacesTheSingleCommittedState() async throws {

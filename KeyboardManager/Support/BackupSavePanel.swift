@@ -18,3 +18,10 @@ enum BackupSavePanel {
         return panel.runModal() == .OK ? panel.url : nil
     }
 }
+
+extension InventoryStore {
+    func chooseBackupDestination() {
+        guard canExportBackup, let destination = BackupSavePanel.chooseDestination() else { return }
+        Task { await exportBackup(to: destination) }
+    }
+}

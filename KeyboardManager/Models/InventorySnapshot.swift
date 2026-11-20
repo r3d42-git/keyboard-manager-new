@@ -60,6 +60,29 @@ struct InventorySnapshot: Codable, Hashable, Sendable {
         photos: []
     )
 
+    // Early collections sometimes recorded a mount on just one side.
+    mutating func completeOneSidedKeycapMounts() {
+        var boardIndices = [String: Int]()
+        var owners = [String: Set<String>]()
+        for (index, board) in boards.enumerated() {
+            boardIndices[board.id] = index
+            for setID in board.keycapSetIDs {
+                owners[setID, default: []].insert(board.id)
+            }
+        }
+        for index in keycapSets.indices {
+            let set = keycapSets[index]
+            if let boardID = set.mountedBoardID {
+                if owners[set.id] == nil, let boardIndex = boardIndices[boardID] {
+                    boards[boardIndex].keycapSetIDs.append(set.id)
+                    owners[set.id] = [boardID]
+                }
+            } else if let candidates = owners[set.id], candidates.count == 1 {
+                keycapSets[index].mountedBoardID = candidates.first
+            }
+        }
+    }
+
     var counts: InventoryCounts {
         InventoryCounts(
             boards: boards.count,

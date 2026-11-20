@@ -75,7 +75,7 @@ enum InventoryReportBuilder {
                             .text(board.name), .text(board.manufacturer), .text(board.format),
                             .text(board.plate), .text(board.pcb),
                             .text(switchNames.nilIfEmpty ?? board.legacySwitchesName),
-                            .text(board.keycapSetID.flatMap { keycaps[$0] } ?? board.legacyKeycapsName),
+                            .text(board.keycapsSummary(namesByID: keycaps)),
                             .text(board.stabilizers), .number(board.photoIDs.count),
                             .text(board.remark), .date(board.updatedAt)
                         ],

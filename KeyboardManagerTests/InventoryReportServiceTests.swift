@@ -10,8 +10,11 @@ final class InventoryReportServiceTests: XCTestCase {
         defer { fixture.cleanup() }
         var filters = InventoryFilters()
         filters.manufacturer = "Acme"
+        var snapshot = fixture.snapshot
+        snapshot.keycapSets.append(KeycapSet(id: "accent", name: "Akzent", mountedBoardID: "board_1"))
+        snapshot.boards[0].keycapSetIDs.append("accent")
         let report = try InventoryReportBuilder.build(
-            snapshot: fixture.snapshot,
+            snapshot: snapshot,
             context: InventoryReportContext(
                 currentKind: .board,
                 filtersByKind: [.board: filters],
@@ -29,6 +32,7 @@ final class InventoryReportServiceTests: XCTestCase {
 
         XCTAssertEqual(report.sections.map(\.kind), InventoryItemKind.allCases)
         XCTAssertEqual(report.sections[0].rows.map(\.id), ["board_1"])
+        XCTAssertEqual(report.sections[0].rows[0].values[6], .text("Testcaps, Akzent"))
         XCTAssertEqual(report.sections[0].filterDescription, "Hersteller: Acme")
         XCTAssertEqual(report.sections[3].rows[0].values[14], .number(90))
         XCTAssertEqual(report.sections[3].rows[0].values[15], .number(70))
@@ -103,7 +107,7 @@ final class InventoryReportServiceTests: XCTestCase {
     private func makeFixture() throws -> Fixture {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("KeyboardManagerReportTests-\(UUID().uuidString)", isDirectory: true)
-        let layout = MigrationStorageLayout(rootURL: directory.appendingPathComponent("AppData"))
+        let layout = InventoryStorageLayout(rootURL: directory.appendingPathComponent("AppData"))
         try FileManager.default.createDirectory(
             at: layout.currentPhotosDirectoryURL,
             withIntermediateDirectories: true
@@ -131,7 +135,7 @@ final class InventoryReportServiceTests: XCTestCase {
                     pcb: "Hot-Swap",
                     stabilizers: "TX",
                     remark: "Täglicher Begleiter",
-                    keycapSetID: "keycap_1",
+                    keycapSetIDs: ["keycap_1"],
                     photoIDs: ["photo_1"],
                     mainPhotoID: "photo_1",
                     createdAt: date,

@@ -1,105 +1,58 @@
-# Keyboard Manager V2 – Fachliche Beschreibung
+# Keyboard Manager auf dem Mac
 
-Stand: 23. September 2026 · Produktversion: 1.1.1
+## Die Sammlung öffnen
 
-## 1. Zweck und Nutzen
+Beim Start öffnet sich **Galerie › Keyboards**. Mit dem Schieberegler unten rechts vergrößerst oder verkleinerst du die Fotokarten. Die App merkt sich die gewählte Größe.
 
-Keyboard Manager V2 ist eine native macOS-Anwendung zur lokalen Verwaltung einer Sammlung mechanischer Tastaturen und ihrer Komponenten. Sie bündelt die Erfassung, Pflege, Suche, Darstellung, Sicherung und Berichterstellung in einer Anwendung.
+**Übersicht** (⌘1) zeigt den Bestand als Tabelle. Oben wählst du die Bestandsart. Die Zahl neben jeder Art ist ihr Gesamtbestand. Unten in der Seitenleiste siehst du die Gesamtzahl aller Einträge und lokalen Fotos.
 
-Die Anwendung richtet sich an Sammlerinnen und Sammler, die ihre Bestände nachvollziehbar dokumentieren möchten: welche Boards vorhanden sind, welche Keycap-Sets, Artisans und Switch-Sets dazugehören, welche Komponenten verbaut sind und welche Fotos den Objekten zugeordnet wurden.
+Klicke auf einen Spaltenkopf, um die Zeilen danach zu sortieren. Ein weiterer Klick kehrt die Reihenfolge um. Der Pfeil am Spaltentitel zeigt die Richtung. Über **Sortierung** kannst du dieselbe Auswahl auch in der Galerie treffen. Die App merkt sich Spalte und Richtung für jede Bestandsart auf diesem Mac und verwendet sie beim nächsten Start wieder.
 
-Die Vorgängeranwendung Keyboard Manager V1 bleibt eine unveränderte Referenz. V2 besitzt einen eigenen Datenbereich und verändert weder die V1-Datenbank noch deren Fotoordner.
+Bei Switches zeigen **Gesamt**, **Verbaut** und **Verfügbar** den Gesamtbestand, die über alle Keyboards verteilten Switches und den freien Rest. Sortiere nach **Verfügbar**, um ein Set mit genug freien Switches für dein nächstes Keyboard zu finden.
 
-## 2. Verwaltete Bestandsarten
-
-| Bestandsart | Fachlicher Inhalt |
+| Bestandsart | Was du hier findest |
 | --- | --- |
-| Keyboards | Board mit Hersteller, Format, Plate, PCB, Stabilisatoren, Keycaps, Switches, Notizen und Fotos |
-| Keycap-Sets | Name, Hersteller, Profil, Material, Status, Kits, Quelle, optional montiertes Board und Fotos |
-| Artisans | Hersteller, Profil, Material, Status, Tags, optional montiertes Board und Fotos |
-| Switch-Sets | Technische Daten, Pin-Typ, Bestand, Installationen auf Boards, verfügbarer Restbestand und Fotos |
+| Keyboards | Hersteller, Format, PCB, Plate, Stabilisatoren sowie montierte Keycaps und Switches |
+| Keycap-Sets | Hersteller, Profil, Material, Status, Kits und montiertes Board |
+| Artisans | Hersteller, Profil, Material, Status, Tags und montiertes Board |
+| Switch-Sets | Switch-Typ, Pins, Kräfte, Gesamtmenge und auf Boards verteilte Stückzahlen |
 
-Ein Switch-Set kann auf mehreren Boards verbaut sein. Die Anwendung führt die jeweils installierte Menge zentral; der verfügbare Bestand ergibt sich automatisch aus Gesamtbestand minus verbauter Menge und kann nicht negativ werden.
+**Galerie** (⌘2) zeigt Keyboards, Keycap-Sets und Artisans als Fotokarten. Auch ohne Hauptfoto bleibt der Eintrag sichtbar. Die Suche im Fenster, **Filter** und **Sortierung** beziehen sich auf die gewählte Bestandsart und gelten in beiden Ansichten. So kannst du etwa nach einem Hersteller und einem Boardformat filtern und die gefundenen Boards anschließend in der Galerie vergleichen. Bei aktiven Kriterien zeigt der Kopf die Trefferzahl im Verhältnis zum Bestand.
 
-## 3. Startansicht und Bestandsübersicht
+Mit **Ohne Foto** findest du Einträge ohne lokales Foto, auch wenn eine externe Bildadresse hinterlegt ist. Für Keycap-Sets und Artisans gibt es zusätzlich **Nicht montiert**. Beide Schnellfilter lassen sich miteinander sowie mit der Suche und den übrigen Filtern kombinieren.
 
-Die Sidebar führt zu **Übersicht**, **Galerie**, **Erfassen** und den Datenfunktionen. Die Übersicht zeigt zunächst Kennzahlen für alle vier Bestandsarten und die Zahl der Fotos. Anschließend kann der gewünschte Inventartyp ausgewählt werden.
+## Einträge ansehen und ändern
 
-Suche, typabhängige Filter und Sortierung wirken direkt auf die Tabelle. Für Keyboards werden unter anderem Hersteller und Format gefiltert; bei anderen Inventartypen stehen passende Fachfelder wie Profil, Status, Typ, Betriebskraft oder Pins zur Verfügung. Die Suche berücksichtigt Unterschiede bei Groß- und Kleinschreibung sowie bei diakritischen Zeichen nicht. Trefferzahl, Tabelle und Aktionen aktualisieren sich unmittelbar.
+Doppelklicke in der Übersicht auf eine Zeile oder klicke in der Galerie auf eine Karte. In den Details kannst du die Kerndaten lesen, die lokalen Fotos durchsehen und ein Bild groß öffnen. Über **Bearbeiten** gelangst du in den Editor. Auch das Kontextmenü einer Tabellenzeile oder Galeriekarte führt zum Bearbeiten und zum Kopieren des Namens.
 
-Ein Doppelklick oder die Aktion **Details** öffnet einen vorhandenen Eintrag zur Bearbeitung. Nach Speichern oder bewusstem Verwerfen stellt die Anwendung Auswahl, Filter, Sortierung, Tabellenposition und Fokus wieder her.
+In den Details eines Keyboards kannst du jedes zugeordnete Keycap-Set, jeden montierten Artisan und jedes verbaute Switch-Set direkt öffnen. **Zurück zum Keyboard** bringt dich wieder zu diesem Keyboard und zum vorher ausgewählten Foto.
 
-![Bestandsübersicht mit Kennzahlen, Filtern und Tastaturtabelle](assets/01-uebersicht.jpeg)
+Mit **Erfassen** (⌘3), der Plustaste im Fenster oder **⌘N** legst du einen neuen Eintrag an. Im Menü **Ablage** kannst du unter **Neuer Eintrag** direkt eine andere Bestandsart wählen. Gib einen Namen ein und ergänze die gewünschten Angaben.
 
-*Abbildung 1: Übersicht eines importierten Beispielbestands mit Kennzahlen und der Tabelle für Keyboards.*
+| Reiter | Arbeitsschritt |
+| --- | --- |
+| **Daten** | Technische Angaben und Eigenschaften für die gewählte Bestandsart eintragen. Bei vielen Feldern lassen sich bereits verwendete Werte auswählen. |
+| **Verknüpfungen** | Einem Board mehrere Keycap-Sets zuweisen, einen Artisan auf einem Board montieren oder die verbaute Switch-Stückzahl direkt eingeben. |
+| **Fotos** | Lokale Fotos hinzufügen und ein Hauptfoto für Tabelle und Galerie wählen. JPEG, PNG, GIF, WebP und HEIC werden bis 30 MiB je Datei unterstützt. Große Bilder werden auf höchstens 1.920 × 1.080 Pixel skaliert. |
+| **Notizen** | Freitext zum Eintrag festhalten. |
 
-## 4. Erfassen und Bearbeiten
+Mit **Keycap-Set hinzufügen …** kannst du zum Beispiel ein Base-Kit und ein separat erfasstes Artisan-Child-Kit demselben Keyboard zuordnen. Ist ein Set bereits auf einem anderen Board montiert, steht dessen Name im Menü neben dem Set. Beim Speichern wechselt dieses Set zum bearbeiteten Board.
 
-Über **Erfassen**, die Toolbar oder `⌘N` wird ein neuer Entwurf angelegt. Je nach gewählter Bestandsart zeigt die Anwendung nur die fachlich passenden Felder. Der Name ist ein Pflichtfeld. Bereits verwendete Hersteller- und Fachwerte können aus Bibliotheken gewählt werden; freie Eingaben bleiben möglich und werden beim Speichern dedupliziert übernommen.
+Ein Switch-Set kann mehrere Boards ausstatten. Sind von 100 Switches bereits 30 auf anderen Boards montiert, kannst du hier bis zu 70 eintragen. **Speichern** übernimmt den Entwurf und öffnet **Galerie › Keyboards**. Auch **Abbrechen** bringt dich dorthin. Bei ungespeicherten Änderungen kannst du vorher weiterbearbeiten oder die Änderungen verwerfen.
 
-Bei Keyboards lassen sich ein Keycap-Set sowie ein oder mehrere Switch-Sets einschließlich Menge zuordnen. Lokale Bilder können hinzugefügt und eines davon als Hauptfoto markiert werden. Unterstützt werden JPEG, PNG, GIF, WebP und HEIC; pro Datei gelten 30 MiB. Große Bilder werden vor der lokalen Ablage auf höchstens 1.920 × 1.080 Pixel skaliert.
+## Berichte und Backups speichern
 
-Entwürfe sind vom gespeicherten Bestand getrennt. **Speichern** validiert die Eingaben und schreibt erst dann in den lokalen Bestand. **Verwerfen** verlangt bei Änderungen eine eindeutige Entscheidung. Auch Navigation, Typwechsel und der rote Fensterschalter schützen ungespeicherte Änderungen; „Weiter bearbeiten“ erhält den Entwurf.
+Export und Wiederherstellung findest du unter **Daten** in der Seitenleiste und im Menü **Sammlung**.
 
-![Leerer Keyboard-Entwurf mit Basisdaten, Komponenten und Fotos](assets/03-erfassen.jpeg)
+- **Bericht exportieren …** erstellt einen PDF-Bericht oder eine XLSX-Arbeitsmappe. Wähle den gesamten Bestand oder nur die aktuelle Art. Mit **Aktuelle Filter anwenden** übernimmt der Bericht Suche und Filter je Art. PDF kann lokale Hauptfotos einbetten. XLSX enthält eine Übersicht und ein filterbares Blatt je exportierter Art.
+- **Backup erstellen …** sichert alle vier Bestandsarten und die verwalteten Fotos im gewählten Archiv. Die Auswahl in Tabelle oder Galerie schränkt die Sicherung nicht ein.
 
-*Abbildung 2: Erfassungsmaske für ein Keyboard mit getrennten Bereichen für Basisdaten, Komponenten, Fotos und Notizen.*
+### Eigene Sicherung wiederherstellen
 
-## 5. Galerie und Detailansicht
+Wähle unter **Daten** die Aktion **Backup einspielen …** und dann dein ZIP-Backup. Die App prüft das Archiv samt Fotos und zeigt die Zahl der Einträge pro Bestandsart. Erst nach **Wiederherstellen …** und der Bestätigung ersetzt sie die aktuelle Sammlung. Den bisherigen Bestand kannst du anschließend im Finder anzeigen.
 
-Die Galerie stellt Boards, Keycap-Sets und Artisans als anpassbares Kartenraster dar. Lokale Hauptfotos werden direkt angezeigt; Einträge ohne lokales Bild erhalten einen klaren nativen Leerzustand statt eines künstlich gespeicherten Ersatzbildes. Filter, Suche, Sortierung und Trefferzahl funktionieren analog zur Übersicht.
+Die Wiederherstellung unterstützt auch die ZIPs aus früheren Versionen der nativen Mac-App. Bei diesen Sicherungen liegt ein ursprünglich als HEIC gespeichertes Foto im Archiv als JPEG vor. Neue Sicherungen enthalten zusätzlich das HEIC-Original.
 
-Ein Klick auf eine Karte öffnet die Großansicht. Dort können Details geprüft, bearbeitet oder nach Bestätigung gelöscht werden. Die Pfeiltasten wechseln innerhalb eines Eintrags durch dessen lokale Fotos; `Esc` schließt die Großansicht. Externe Bildadressen aus einer V1-Übernahme werden nur als solche kenntlich gemacht und nicht automatisch geladen.
+## Einstellungen
 
-![Galerieansicht der Keyboard-Sammlung](assets/02-galerie.jpeg)
-
-*Abbildung 3: Galerie der Keyboards mit Hauptfotos, Kerninformationen und dem sichtbaren Leerzustand „Kein Foto“.*
-
-## 6. Suchen, Beziehungen und Datenqualität
-
-Keyboard Manager V2 hält die fachlichen Beziehungen konsistent:
-
-- Ein Hauptfoto muss zum jeweiligen Eintrag gehören.
-- Ein Keycap-Set kann einem Board zugeordnet sein; die Rückbeziehung bleibt synchron.
-- Switch-Installationen werden als eigene Beziehung mit Menge geführt. Änderungen an Board oder Switch-Set aktualisieren beide Sichten.
-- Fotos gehören genau einem zulässigen Besitzer.
-- HTTPS-Links werden vor dem Öffnen erneut geprüft.
-
-Die Übersicht kann Einträge nach Namen, Beziehungen und Fachmerkmalen auffinden. Tabellenspalten zeigen für Keyboards die Keycaps sowie die verbauten Switches mit Mengen, für Keycap-Sets und Artisans die Kits beziehungsweise Tags und für Switches Bestand, verbaut, verfügbar und die zugehörigen Boards.
-
-## 7. Migration aus Keyboard Manager V1
-
-V2 kann bestehende V1-Daten aus drei Quellen übernehmen:
-
-1. V1-ZIP-Backups der Schemata 3 bis 6,
-2. Legacy-JSON-Backups,
-3. einer lokal installierten V1-SQLite-Datenbank mit Fotoordner.
-
-Der Import ist nicht destruktiv. Die gewählte Quelle wird zunächst nur gelesen, in einen V2-eigenen Staging-Bereich kopiert und dort geprüft. Dazu gehören Dateigrößen, sichere Pfade, Prüfsummen, Manifest, Beziehungen, Bildtypen und Mengen. Erst nach einer sichtbaren Zusammenfassung und ausdrücklichen Bestätigung wird ein neuer V2-Bestand aktiviert.
-
-Bei einer direkten SQLite-Quelle werden Datenbank, WAL- und SHM-Dateien nie im Original geöffnet oder verändert. V2 verarbeitet ausschließlich eigene Kopien. Ein vorhandener V2-Bestand wird vor dem Ersetzen gesichert; schlägt die Aktivierung fehl, stellt die Anwendung den vorherigen Bestand wieder her. Während Keyboard Manager V1 läuft, blockiert V2 die direkte Prüfung und den Commit.
-
-## 8. Sicherung, Export und Berichte
-
-Der Bestand kann als portables ZIP-Backup im V1-kompatiblen Schema 6 gesichert werden. Vor der endgültigen Ablage liest die Anwendung das erzeugte Archiv erneut ein und vergleicht die Bestandszahlen. Bei identischem Bestand, App-Stand und Exportzeitpunkt entsteht ein byteidentisches Archiv. Verwaltete Originalfotos bleiben dabei unverändert; HEIC wird nur für die kompatible Exportkopie als JPEG bereitgestellt.
-
-Aus der Übersicht lassen sich Bestandsberichte erzeugen:
-
-- **PDF:** A4 quer mit Deckblatt, Bereichsseiten, Tabellenköpfen, Seitenzahlen und bis zu 200 lokalen Hauptfotos.
-- **XLSX:** Übersichtsblatt sowie ein Blatt je exportiertem Inventartyp, mit Filtern, fixierten Kopfzeilen, typisierten Zahlen und klickbaren HTTPS-Links.
-
-Der Export kann auf den aktuellen Inventartyp oder den gesamten Bestand begrenzt werden. Aktive Filter lassen sich bewusst übernehmen oder für einen vollständigen Export ausschalten. Die Quelldaten werden durch Berichte und Backups nicht verändert.
-
-## 9. Datenschutz und lokale Verarbeitung
-
-Sammlung, Fotos, Sicherungen und Migrationsberichte verbleiben im eigenen lokalen Application-Support-Bereich von V2. Die Anwendung verwendet keine Telemetrie und kein Nutzerkonto.
-
-Beim Start fragt V2 ausschließlich das neueste stabile Release des öffentlichen GitHub-Repositories ab. Eine neuere Version wird zunächst nur angezeigt. Erst nach ausdrücklicher Bestätigung lädt die Anwendung das universelle DMG zusammen mit der veröffentlichten SHA-256-Datei, prüft die heruntergeladenen Bytes und öffnet den passenden macOS-Installer. Die laufende App wird nicht selbst ersetzt. Eine manuelle Updateprüfung ist zusätzlich in den Einstellungen verfügbar.
-
-Externe Bildadressen werden nur auf ausdrückliche Bestätigung abgerufen. Vor dem Abruf zeigt die Anwendung die betroffenen Hosts; sie akzeptiert ausschließlich HTTPS, verwendet keine Cookies und keinen persistenten Netzwerkcache und prüft Weiterleitungen, MIME-Typ, Größe und Bilddekodierbarkeit. Erst das normale Speichern übernimmt ein bestätigtes Bild in die lokale Sammlung.
-
-## 10. Qualitäts- und Bedienprinzipien
-
-Die Anwendung folgt den üblichen macOS-Konventionen: native Sidebar, Systemdialoge, Kontextmenüs, Tastaturkürzel, Undo/Redo und zugängliche Fokusführung. Sichtbare Arbeits-, Erfolgs- und Fehlerzustände machen Import, Export und Speichern nachvollziehbar.
-
-Der fachliche V1-Funktionsumfang ist in V2 umgesetzt und durch Unit-, Integrations-, Performance- und UI-Tests abgesichert. Die hier gezeigten Screenshots stammen aus dem lokal gebauten V2-App-Bundle mit einem bereits importierten Bestand; sie zeigen ausschließlich die Anwendung und keine externen Dienste.
+In den Einstellungen (⌘,) wählst du Deutsch oder Englisch sowie **System**, **Hell** oder **Dunkel** für die Darstellung. Dort kannst du auch manuell nach Updates suchen. [Datenschutz und Speicherorte](../PRIVACY.md)

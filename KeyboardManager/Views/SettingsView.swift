@@ -4,26 +4,27 @@ struct SettingsView: View {
     @Bindable var store: InventoryStore
     @Bindable var updateController: AppUpdateController
     @Binding var preferredLanguage: String
-    @AppStorage("followSystemAppearance") private var followSystemAppearance = true
+    @Binding var appearance: CollectionAppearance
 
     var body: some View {
         Form {
-            Picker("Sprache", selection: $preferredLanguage) {
-                Text("Deutsch").tag("de")
-                Text("English").tag("en")
+            Section("Darstellung") {
+                Picker("Erscheinungsbild", selection: $appearance) {
+                    ForEach(CollectionAppearance.allCases, id: \.self) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Picker("Sprache", selection: $preferredLanguage) {
+                    Text("Deutsch").tag("de")
+                    Text("English").tag("en")
+                }
+                .disabled(store.isBackupRestoreActive)
             }
 
-            Toggle("Systemdarstellung verwenden", isOn: $followSystemAppearance)
-            Text(
-                followSystemAppearance
-                    ? "Die App folgt Hell- oder Dunkelmodus von macOS."
-                    : "Die App verwendet den hellen Modus."
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-
-            LabeledContent("Datenhaltung", value: "SQLite · lokal")
-            LabeledContent("Migrationsmodus", value: "Nur lesende V1-Quelle")
+            Section("Sammlung") {
+                LabeledContent("Datenhaltung", value: L10n.text("SQLite · lokal"))
+            }
 
             Section("Updates") {
                 LabeledContent("Installierte Version", value: updateController.installedVersion)
@@ -42,7 +43,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 480, height: 380)
+        .frame(width: 480, height: 410)
         .navigationTitle("Allgemein")
     }
 
@@ -83,6 +84,31 @@ struct SettingsView: View {
         case let .failed(message):
             Label("Updateprüfung fehlgeschlagen: \(message)", systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
+        }
+    }
+}
+
+
+enum CollectionAppearance: String, CaseIterable {
+    case system, light, dark
+
+    static var legacyPreference: Self {
+        (UserDefaults.standard.object(forKey: "followSystemAppearance") as? Bool) == false ? .light : .system
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .system: "System"
+        case .light: "Hell"
+        case .dark: "Dunkel"
         }
     }
 }

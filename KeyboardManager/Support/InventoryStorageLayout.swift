@@ -1,6 +1,6 @@
 import Foundation
 
-struct MigrationStorageLayout: Hashable, Sendable {
+struct InventoryStorageLayout: Hashable, Sendable {
     static let applicationDirectoryName = "de.r3d42.KeyboardManagerV2"
 
     var rootURL: URL
@@ -9,13 +9,13 @@ struct MigrationStorageLayout: Hashable, Sendable {
         self.rootURL = rootURL.standardizedFileURL
     }
 
-    static var `default`: MigrationStorageLayout {
+    static var `default`: InventoryStorageLayout {
         let applicationSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support", isDirectory: true)
-        return MigrationStorageLayout(
+        return InventoryStorageLayout(
             rootURL: applicationSupport.appendingPathComponent(applicationDirectoryName, isDirectory: true)
         )
     }
@@ -34,17 +34,5 @@ struct MigrationStorageLayout: Hashable, Sendable {
 
     var currentThumbnailsDirectoryURL: URL {
         currentDirectoryURL.appendingPathComponent("Thumbnails", isDirectory: true)
-    }
-
-    var stagingRootURL: URL {
-        rootURL.appendingPathComponent("Staging", isDirectory: true)
-    }
-
-    var backupsRootURL: URL {
-        rootURL.appendingPathComponent("Backups", isDirectory: true)
-    }
-
-    var reportsRootURL: URL {
-        rootURL.appendingPathComponent("MigrationReports", isDirectory: true)
     }
 }

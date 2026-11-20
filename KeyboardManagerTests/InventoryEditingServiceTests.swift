@@ -7,7 +7,7 @@ final class InventoryEditingServiceTests: XCTestCase {
 
     func testBoardSaveSynchronizesKeycapAndSwitchRelationships() throws {
         let board = Board(id: "board-1", name: "Board")
-        let otherBoard = Board(id: "board-2", name: "Other", keycapSetID: "keycap-1")
+        let otherBoard = Board(id: "board-2", name: "Other", keycapSetIDs: ["keycap-1"])
         let keycap = KeycapSet(id: "keycap-1", name: "Caps", mountedBoardID: "board-2")
         let switches = SwitchSet(id: "switch-1", name: "Switches", quantity: 100)
         var source = InventorySnapshot.empty
@@ -16,13 +16,13 @@ final class InventoryEditingServiceTests: XCTestCase {
         source.switchSets = [switches]
 
         var draft = InventoryDraft(board: board, installations: [])
-        draft.keycapSetID = keycap.id
+        draft.keycapSetIDs = [keycap.id]
         draft.installations[switches.id] = 70
 
         let result = try service.saving(draft, newPhotos: [], in: source)
 
-        XCTAssertEqual(result.snapshot.boards.first(where: { $0.id == board.id })?.keycapSetID, keycap.id)
-        XCTAssertNil(result.snapshot.boards.first(where: { $0.id == otherBoard.id })?.keycapSetID)
+        XCTAssertEqual(result.snapshot.boards.first(where: { $0.id == board.id })?.keycapSetIDs, [keycap.id])
+        XCTAssertEqual(result.snapshot.boards.first(where: { $0.id == otherBoard.id })?.keycapSetIDs, [])
         XCTAssertEqual(result.snapshot.keycapSets.first?.mountedBoardID, board.id)
         XCTAssertEqual(
             result.snapshot.switchInstallations,
@@ -30,11 +30,72 @@ final class InventoryEditingServiceTests: XCTestCase {
         )
     }
 
+    func testMovingAndDeletingOneSetPreservesOtherMountsOnBothBoards() throws {
+        var source = InventorySnapshot.empty
+        source.boards = [
+            Board(id: "one", name: "One", keycapSetIDs: ["base", "accent"]),
+            Board(id: "two", name: "Two", keycapSetIDs: ["second"])
+        ]
+        source.keycapSets = [
+            KeycapSet(id: "base", name: "Base", mountedBoardID: "one"),
+            KeycapSet(id: "accent", name: "Accent", mountedBoardID: "one"),
+            KeycapSet(id: "second", name: "Second", mountedBoardID: "two")
+        ]
+        var caps = InventoryDraft(keycapSet: source.keycapSets[1])
+        caps.mountedBoardID = "two"
+        let moved = try service.saving(caps, newPhotos: [], in: source).snapshot
+        XCTAssertEqual(moved.boards.map(\.keycapSetIDs), [["base"], ["second", "accent"]])
+        XCTAssertEqual(moved.keycapSets.map(\.mountedBoardID), ["one", "two", "two"])
+
+        var board = InventoryDraft(board: moved.boards[0], installations: [])
+        board.keycapSetIDs.append(contentsOf: ["accent", "accent"])
+        let restored = try service.saving(board, newPhotos: [], in: moved).snapshot
+        XCTAssertEqual(restored.boards.map(\.keycapSetIDs), [["base", "accent"], ["second"]])
+        XCTAssertEqual(restored.keycapSets.map(\.mountedBoardID), ["one", "one", "two"])
+
+        let removed = try service.deleting(kind: .keycapSet, id: "base", in: restored).snapshot
+        XCTAssertEqual(removed.boards.map(\.keycapSetIDs), [["accent"], ["second"]])
+        let removedBoard = try service.deleting(kind: .board, id: "one", in: restored).snapshot
+        XCTAssertEqual(removedBoard.keycapSets.map(\.mountedBoardID), [nil, nil, "two"])
+    }
+
+    func testBoardSaveRejectsMissingSecondKeycapSet() {
+        var source = InventorySnapshot.empty
+        source.keycapSets = [KeycapSet(id: "existing", name: "Existing")]
+        var draft = InventoryDraft(kind: .board)
+        draft.name = "Board"
+        draft.keycapSetIDs = ["existing", "missing"]
+        XCTAssertThrowsError(try service.saving(draft, newPhotos: [], in: source)) { error in
+            XCTAssertEqual(error as? InventoryEditingError, .missingRelation("missing"))
+        }
+    }
+
+    func testInstallationSumsRejectOverflowFromEitherEditor() throws {
+        var source = InventorySnapshot.empty
+        source.boards = [Board(id: "a", name: "A"), Board(id: "b", name: "B")]
+        source.switchSets = [SwitchSet(id: "s", name: "Switches", quantity: .max)]
+        source.switchInstallations = [SwitchInstallation(switchSetID: "s", boardID: "a", quantity: .max)]
+        var board = InventoryDraft(board: source.boards[1], installations: source.switchInstallations)
+        board.installations["s"] = 1
+        var switches = InventoryDraft(switchSet: source.switchSets[0], installations: source.switchInstallations)
+        switches.installations["b"] = 1
+        for draft in [board, switches] {
+            XCTAssertThrowsError(try service.saving(draft, newPhotos: [], in: source)) { error in
+                guard case InventoryEditingError.invalidQuantity = error else {
+                    return XCTFail("Expected invalid quantity, got \(error)")
+                }
+            }
+        }
+        switches.installations["a"] = Int.max - 1
+        let valid = try service.saving(switches, newPhotos: [], in: source).snapshot
+        XCTAssertEqual(valid.switchSets[0].installedQuantity(in: valid.switchInstallations), Int.max)
+    }
+
     private func legacyRelationshipFixture() -> InventorySnapshot {
         var source = InventorySnapshot.empty
         source.boards = [
             Board(id: "board", name: "Board", legacyKeycapsName: "Old caps",
-                  keycapSetID: "caps", legacySwitchesName: "Old switches"),
+                  keycapSetIDs: ["caps"], legacySwitchesName: "Old switches"),
             Board(id: "other", name: "Other", legacyKeycapsName: "Import caps",
                   legacySwitchesName: "Import switches")
         ]
@@ -47,7 +108,7 @@ final class InventoryEditingServiceTests: XCTestCase {
     func testBoardDetachDoesNotResurrectLegacyNames() throws {
         let source = legacyRelationshipFixture()
         var draft = InventoryDraft(board: source.boards[0], installations: source.switchInstallations)
-        draft.keycapSetID = nil
+        draft.keycapSetIDs = []
         draft.installations = [:]
         let saved = try service.saving(draft, newPhotos: [], in: source).snapshot
         let summary = try XCTUnwrap(InventoryQuery.items(in: saved, kind: .board).first)
@@ -76,7 +137,7 @@ final class InventoryEditingServiceTests: XCTestCase {
             var source = legacyRelationshipFixture()
             if editFromBoard {
                 var draft = InventoryDraft(board: source.boards[1], installations: [])
-                draft.keycapSetID = "caps"
+                draft.keycapSetIDs = ["caps"]
                 source = try service.saving(draft, newPhotos: [], in: source).snapshot
             } else {
                 var draft = InventoryDraft(keycapSet: source.keycapSets[0])
@@ -121,19 +182,6 @@ final class InventoryEditingServiceTests: XCTestCase {
         let first = try service.saving(draft, newPhotos: [], in: source).snapshot
         XCTAssertEqual(first.libraryValues.valuesByKey["manufacturers"], ["Mode"])
         XCTAssertEqual(first.libraryValues.valuesByKey["formats"], ["75%"])
-    }
-
-    func testCaptureLayoutAlwaysFitsAvailableWidth() {
-        for width: CGFloat in [640, 760, 980, 1_240, 1_600] {
-            let layout = CaptureLayout(availableWidth: width)
-            XCTAssertEqual(
-                layout.formWidth + CaptureLayout.dividerWidth + layout.previewWidth,
-                width,
-                accuracy: 0.001
-            )
-            XCTAssertGreaterThanOrEqual(layout.previewWidth, CaptureLayout.minimumPreviewWidth)
-            XCTAssertLessThanOrEqual(layout.previewWidth, CaptureLayout.maximumPreviewWidth)
-        }
     }
 
     func testInventoryQueryCombinesFiltersAndIgnoresDiacritics() {
@@ -197,7 +245,7 @@ final class InventoryEditingServiceTests: XCTestCase {
             in: source,
             kind: .switchSet,
             filters: filters,
-            sort: .quantityDescending
+            sort: InventorySort(.quantity, order: .reverse)
         )
 
         XCTAssertEqual(results.map(\.id), ["switch-2", "switch-1"])
@@ -263,7 +311,7 @@ final class InventoryEditingServiceTests: XCTestCase {
         )!
         try png.write(to: sourceURL)
 
-        let layout = MigrationStorageLayout(rootURL: root.appendingPathComponent("AppData"))
+        let layout = InventoryStorageLayout(rootURL: root.appendingPathComponent("AppData"))
         let photoService = PhotoImportService(layout: layout)
         let owner = PhotoOwner(type: .board, id: "board-1")
         let prepared = try await photoService.prepare(urls: [sourceURL], owner: owner)
@@ -292,7 +340,7 @@ final class InventoryEditingServiceTests: XCTestCase {
                 suggestedFileName: "cover.png"
             )
         )
-        let layout = MigrationStorageLayout(rootURL: root)
+        let layout = InventoryStorageLayout(rootURL: root)
         let service = PhotoImportService(
             layout: layout,
             externalImageFetcher: fetcher
@@ -388,7 +436,7 @@ final class InventoryEditingServiceTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("keyboard-manager-thumbnail-test-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let layout = MigrationStorageLayout(rootURL: root)
+        let layout = InventoryStorageLayout(rootURL: root)
         try FileManager.default.createDirectory(
             at: layout.currentPhotosDirectoryURL,
             withIntermediateDirectories: true

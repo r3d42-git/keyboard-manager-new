@@ -10,33 +10,9 @@ Dieses Dokument beschreibt ausschließlich die direkte Verteilung außerhalb des
 - Artefakt: ein universelles (`arm64` und `x86_64`) Developer-ID-signiertes und notarisiertes DMG
 - Zugangsdaten: ausschließlich im Schlüsselbund oder in GitHub Secrets, nie in Dateien, Git-Historie oder Terminalausgaben
 
-## Einmalige lokale Apple-Einrichtung
+## Lokale Signierung und Notarisierung
 
-Die vorhandene Developer-ID-Identität des V1-Projekts darf auch V2 signieren. Für die Notarisierung verwendet V2 das eigene Schlüsselbundprofil `keyboardmanager-new-notary`. Dadurch kann es unabhängig widerrufen werden.
-
-1. Mit aktivierter Zwei-Faktor-Authentifizierung bei [account.apple.com](https://account.apple.com) unter **Anmeldung und Sicherheit → App-spezifische Passwörter** ein neues Passwort mit der Bezeichnung `Keyboard Manager V2 Notarization` erzeugen. Apples Anleitung: [App-spezifische Passwörter](https://support.apple.com/en-gb/102654).
-2. Die vorhandene Signaturidentität prüfen:
-
-   ```bash
-   security find-identity -v -p codesigning
-   ```
-
-3. Das neue Passwort nur lokal in ein separates `notarytool`-Profil speichern. `APPLE_ID` durch die eigene Apple-ID ersetzen; beim Passwort den gerade erzeugten Wert einsetzen. Der Wert gehört weder in Git noch in einen Screenshot.
-
-   ```bash
-   xcrun notarytool store-credentials "keyboardmanager-new-notary" \
-     --apple-id "APPLE_ID" \
-     --team-id "G6JH37W285" \
-     --password "APP_SPECIFIC_PASSWORD"
-   ```
-
-4. Das Profil ohne Geheimnis-Ausgabe prüfen:
-
-   ```bash
-   xcrun notarytool history --keychain-profile "keyboardmanager-new-notary"
-   ```
-
-Apple beschreibt die Anforderungen für Developer ID und Notarisierung unter [Developer ID](https://developer.apple.com/developer-id/) und [Notarisierung vor der Distribution](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution?changes=_5).
+Für lokale Releases verwendet das Projekt das vorhandene Schlüsselbundprofil `ToolBoxS`. Das Release-Skript erhält den Profilnamen über `NOTARY_PROFILE`. In GitHub Actions verwendet dasselbe Skript den App-Store-Connect-API-Key der Release-Umgebung.
 
 ## Lokales Release erzeugen
 
@@ -46,7 +22,7 @@ Nach Abschluss der Produktabnahme und mit einer gesetzten Releaseversion:
 
 ```bash
 DEVELOPMENT_TEAM="G6JH37W285" \
-NOTARY_PROFILE="keyboardmanager-new-notary" \
+NOTARY_PROFILE="ToolBoxS" \
 ./script/release.sh
 ```
 

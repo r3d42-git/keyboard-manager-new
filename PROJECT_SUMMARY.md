@@ -1,5 +1,7 @@
 # Keyboard Manager V2 – Projektübersicht
 
+> Historischer Projektstand bis Version 1.1.2. Die überarbeitete App verwaltet den bestehenden lokalen Bestand direkt. Die aktuelle Bedienung beschreibt die [Produktdokumentation](documentation/Keyboard_Manager_V2_Fachliche_Beschreibung.md).
+
 Stand: 2. Oktober 2026 · Version 1.1.2 veröffentlicht und unabhängig verifiziert · GPL-3.0-or-later
 
 ## Abgeschlossener G2-Release 1.1.2 — 2026-10-02

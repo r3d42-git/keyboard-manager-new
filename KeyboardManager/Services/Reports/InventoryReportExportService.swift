@@ -12,11 +12,11 @@ actor InventoryReportExportService {
         return "keyboard-manager-bestand-\(formatter.string(from: date)).\(format.fileExtension)"
     }
 
-    private let layout: MigrationStorageLayout
+    private let layout: InventoryStorageLayout
     private let fileManager: FileManager
 
     init(
-        layout: MigrationStorageLayout = .default,
+        layout: InventoryStorageLayout = .default,
         fileManager: FileManager = .default
     ) {
         self.layout = layout

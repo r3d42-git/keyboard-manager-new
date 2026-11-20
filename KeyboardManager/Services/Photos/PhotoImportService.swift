@@ -56,12 +56,12 @@ actor PhotoImportService {
     static let maximumPixelWidth = 1_920
     static let maximumPixelHeight = 1_080
 
-    private let layout: MigrationStorageLayout
+    private let layout: InventoryStorageLayout
     private let fileManager: FileManager
     private let externalImageFetcher: any ExternalImageFetching
 
     init(
-        layout: MigrationStorageLayout = .default,
+        layout: InventoryStorageLayout = .default,
         fileManager: FileManager = .default,
         externalImageFetcher: any ExternalImageFetching = URLSessionExternalImageFetcher()
     ) {

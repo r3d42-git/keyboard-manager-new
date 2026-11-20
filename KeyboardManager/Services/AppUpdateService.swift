@@ -69,17 +69,17 @@ enum AppUpdateError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidCurrentVersion:
-            "Die installierte App-Version konnte nicht gelesen werden."
+            L10n.text("Die installierte App-Version konnte nicht gelesen werden.")
         case .unexpectedResponse:
-            "Der Update-Server hat keine gültige Antwort geliefert."
+            L10n.text("Der Update-Server hat keine gültige Antwort geliefert.")
         case .noInstallableDiskImage:
-            "Für dieses Update wurde kein macOS-Installer gefunden."
+            L10n.text("Für dieses Update wurde kein macOS-Installer gefunden.")
         case .missingChecksum:
-            "Für dieses Update fehlt die veröffentlichte Prüfsumme."
+            L10n.text("Für dieses Update fehlt die veröffentlichte Prüfsumme.")
         case .invalidChecksum:
-            "Die veröffentlichte Prüfsumme ist ungültig."
+            L10n.text("Die veröffentlichte Prüfsumme ist ungültig.")
         case .checksumMismatch:
-            "Der geladene Installer stimmt nicht mit der veröffentlichten Prüfsumme überein."
+            L10n.text("Der geladene Installer stimmt nicht mit der veröffentlichten Prüfsumme überein.")
         }
     }
 }
